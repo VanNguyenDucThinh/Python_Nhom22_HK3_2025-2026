@@ -1,4 +1,6 @@
 # main.py
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
 import cv2
 import tkinter as tk
 from tkinter import filedialog, messagebox

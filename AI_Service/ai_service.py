@@ -15,7 +15,7 @@ app = Flask(__name__)
 BACKEND_URL = "http://127.0.0.1:5000/save-result"
 
 # Danh sách nhãn (Labels) rác thải - Cần khớp với lúc train model
-LABELS = ["Rác hữu cơ", "Rác tái chế", "Rác nguy hại"]
+LABELS = ["Rác hữu cơ", "Rác tái chế", "Rác vô cơ"]
 
 # --- GIẢ LẬP MODEL (CHỐNG LỖI KHI CHƯA CÓ MODEL THẬT) ---
 class MockModel:

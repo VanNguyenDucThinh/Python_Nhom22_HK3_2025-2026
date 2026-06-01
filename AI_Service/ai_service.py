@@ -79,7 +79,7 @@ def process_image():
             print("[AI SERVICE] Đã gửi Backend thành công.")
         except requests.exceptions.RequestException as e:
             # Cảnh báo nhưng KHÔNG dừng chương trình, vì bản thân AI đã hoàn thành nhiệm vụ
-            print(f"[CẢNH BÁO] Không kết nối được Backend (Có thể chưa bật). Lỗi: {e}")
+            print(f"[CẢNH BÁO] Không kết nối được Backend. Lỗi: {e}")
 
         # Bước 5: Trả JSON về cho UI (Giao diện) để hiển thị Pop-up
         return jsonify({

@@ -3,7 +3,7 @@ import cv2
 from ultralytics import YOLO
 from config import CAMERA_INDEX
 
-def capture_from_webcam(on_capture_callback):
+def capture_from_webcam(on_capture_callback, camera_id_chosen):
     """
     Camera Service: Chỉ quét vị trí vật thể tiềm năng, vẽ khung vuông đỏ định vị 
     và cắt ảnh gửi đi khi nhấn phím 'S'. Không đảm nhận nhiệm vụ phân loại sâu.
@@ -14,7 +14,8 @@ def capture_from_webcam(on_capture_callback):
     # Danh sách các ID vật thể tiềm năng cần theo vết (Chai, ly, cốc, bát, đĩa, thức ăn...)
     TARGET_CLASSES = [34, 39, 41, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 66]
 
-    cap = cv2.VideoCapture(CAMERA_INDEX)
+    cap = cv2.VideoCapture(camera_id_chosen)
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
     if not cap.isOpened():
         print("Lỗi: Không thể mở Camera thiết bị.")
         return

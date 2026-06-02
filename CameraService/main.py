@@ -44,18 +44,32 @@ def hanh_dong_su_dung_camera():
 def main():
     root = tk.Tk()
     root.title("Hệ Thống Phân Loại Rác Thải")
-    root.geometry("400x250") 
     
-    label_title = tk.Label(root, text="CHỌN PHƯƠNG THỨC LẤY ẢNH", font=("Arial", 14, "bold"))
-    label_title.pack(pady=20)
+    # kích thước cửa sổ
+    window_width = 600
+    window_height = 450
     
-    btn_upload = tk.Button(root, text="Tải ảnh từ máy tính", command=hanh_dong_tai_anh_tu_file, width=25, height=2, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"))
-    btn_upload.pack(pady=10)
+    # Lấy thông số màn hình và tính toán căn giữa
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    center_x = int((screen_width - window_width) / 2)
+    center_y = int((screen_height - window_height) / 2)
     
-    btn_camera = tk.Button(root, text="Sử dụng Camera trực tiếp", command=hanh_dong_su_dung_camera, width=25, height=2, bg="#2196F3", fg="white", font=("Arial", 10, "bold"))
-    btn_camera.pack(pady=10)
+    root.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}') 
+    
+    # 2. Tăng font chữ tiêu đề và khoảng cách
+    label_title = tk.Label(root, text="CHỌN PHƯƠNG THỨC LẤY ẢNH", font=("Arial", 16, "bold"))
+    label_title.pack(pady=40) # Tăng khoảng cách phía trên
+    
+    # 3. Kéo dài nút bấm (width=30) và tăng cỡ chữ (11)
+    btn_upload = tk.Button(root, text="Tải ảnh từ máy tính", command=hanh_dong_tai_anh_tu_file, 
+                           width=30, height=2, bg="#4CAF50", fg="white", font=("Arial", 11, "bold"))
+    btn_upload.pack(pady=15)
+    
+    btn_camera = tk.Button(root, text="Sử dụng Camera trực tiếp", command=hanh_dong_su_dung_camera, 
+                           width=30, height=2, bg="#2196F3", fg="white", font=("Arial", 11, "bold"))
+    btn_camera.pack(pady=15)
     
     root.mainloop()
-
 if __name__ == "__main__":
     main()

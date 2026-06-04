@@ -39,7 +39,7 @@ def save_result():
         new_record = WasteHistory(
             timestamp=current_time,
             label=data['label'],
-            confidence=f"{float(data['confidence']) * 100:.2f}%"
+            confidence=data['confidence'] # Nhận chuỗi phần trăm định dạng sẵn từ AI Service
         )
         
         db.session.add(new_record)
@@ -57,7 +57,7 @@ def show_history():
     """Giao diện Bảng thống kê lịch sử (Static Table) hiển thị trên Trình duyệt"""
     records = WasteHistory.query.order_by(WasteHistory.id.desc()).all()
     
-    # Giao diện HTML có màu sắc phân biệt cho từng loại rác
+    # Giao diện HTML bổ sung màu sắc phân biệt cho 4 loại rác
     html_template = """
     <!DOCTYPE html>
     <html>
@@ -76,6 +76,7 @@ def show_history():
             .huu-co { background-color: #2ed573; }   /* Màu xanh lá cho hữu cơ */
             .vo-co { background-color: #ff4757; }     /* Màu đỏ cho vô cơ */
             .tai-che { background-color: #1e90ff; }   /* Màu xanh dương cho tái chế */
+            .doc-hai { background-color: #9b59b6; }   /* Màu tím cho độc hại */
         </style>
     </head>
     <body>
@@ -100,8 +101,12 @@ def show_history():
                                 <span class="badge huu-co">{{ row.label }}</span>
                             {% elif row.label == "Rác vô cơ" %}
                                 <span class="badge vo-co">{{ row.label }}</span>
-                            {% else %}
+                            {% elif row.label == "Rác tái chế" %}
                                 <span class="badge tai-che">{{ row.label }}</span>
+                            {% elif row.label == "Rác độc hại" %}
+                                <span class="badge doc-hai">{{ row.label }}</span>
+                            {% else %}
+                                <span class="badge" style="background-color: #7f8c8d;">{{ row.label }}</span>
                             {% endif %}
                         </td>
                         <td><strong style="color: #2c3e50;">{{ row.confidence }}</strong></td>

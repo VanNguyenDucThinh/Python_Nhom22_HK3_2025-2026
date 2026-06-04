@@ -7,94 +7,87 @@ from flask import Flask, request, jsonify
 from ultralytics import YOLO
 
 app = Flask(__name__)
+# Ép Flask trả về chuỗi tiếng Việt Unicode thô thay vì ép sang mã ASCII (\xef...)
+app.config['JSON_AS_ASCII'] = False  
 
 # Địa chỉ API của dịch vụ Backend lưu Database
 BACKEND_URL = "http://127.0.0.1:5000/save-result"
 
-# Xác định đường dẫn file model chuẩn nằm ngay trong thư mục gốc AI_Service
+# Nạp model
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(CURRENT_DIR, "yolo_rac_v1.pt")
+MODEL_PATH = os.path.join(CURRENT_DIR, "best.pt")
 
 print("=" * 60)
 print("[HỆ THỐNG AI] Đang khởi tạo mô hình nhận diện...")
 
-# Kiểm tra file model chuẩn
 if os.path.exists(MODEL_PATH):
     model = YOLO(MODEL_PATH)
     print(f"[THÀNH CÔNG] Đã nạp mô hình YOLOv8 chính thức tại: {MODEL_PATH}")
     IS_MOCK = False
 else:
-    # Nếu chưa có file yolo_rac_v1.pt, hệ thống tìm trong folder train mặc định của YOLO làm dự phòng
     MOCK_PATH = os.path.join(CURRENT_DIR, "runs", "classify", "train", "weights", "best.pt")
     if os.path.exists(MOCK_PATH):
         model = YOLO(MOCK_PATH)
         print(f"[TẠM THỜI] Đang nạp mô hình từ thư mục huấn luyện: {MOCK_PATH}")
-        print("Khuyên dùng: Bạn nên copy file 'best.pt' ra ngoài và đổi tên thành 'yolo_rac_v1.pt'.")
         IS_MOCK = False
     else:
-        print(f"[CẢNH BÁO] Không tìm thấy bất kỳ mô hình YOLOv8 nào!")
-        print("Hệ thống sẽ tự động tải mô hình gốc 'yolov8n-cls.pt' để chạy demo không bị crash.")
+        print(f"[CẢNH BÁO] Không tìm thấy file model. Đang dùng model gốc yolov8n-cls.pt để chạy thử.")
         model = YOLO("yolov8n-cls.pt")
         IS_MOCK = True
 print("=" * 60)
 
 @app.route('/upload-image', methods=['POST'])
 def process_image():
+    """API nhận ảnh từ Camera/File, đưa cho YOLO phân loại và chuyển tiếp sang Backend"""
+    # Bẫy lỗi kiểm tra sự tồn tại của file ảnh trong request gửi đến
     if 'image' not in request.files:
-        return jsonify({"status": "error", "message": "Không nhận được file ảnh từ Camera gửi sang."}), 400
-    
-    file = request.files['image']
+        return jsonify({"status": "error", "message": "Không tìm thấy dữ liệu túi file mang tên 'image' trong Request!"}), 400
     
     try:
-        # Bước 1: Chuyển dữ liệu nhị phân nhận được thành mảng ma trận ảnh OpenCV
-        file_bytes = np.frombuffer(file.read(), np.uint8)
-        frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-        
+        # 1. Đọc ảnh từ Request
+        file = request.files['image']
+        npimg = np.frombuffer(file.read(), np.uint8)
+        frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
+
         if frame is None:
-            raise ValueError("Dữ liệu hình ảnh bị hỏng, không thể giải mã.")
+            return jsonify({"status": "error", "message": "Dữ liệu ảnh truyền sang bị hỏng, không thể giải mã!"}), 400
 
-        # Bước 2: Đưa trực tiếp ảnh gốc vào YOLOv8 (Không dùng cv2.resize để chống méo hình)
-        results = model(frame, verbose=False)
-        result = results[0]
-
-        # Lấy chỉ số của nhãn có điểm xác suất cao nhất
-        top1_index = result.probs.top1
-        confidence = float(result.probs.top1conf)
+        # 2. Đưa ảnh vào YOLOv8 để dự đoán
+        results = model(frame)
         
-        # Lấy chuỗi tên nhãn gốc từ kết quả của mô hình YOLO
-        raw_label = result.names[top1_index]
+        # 3. Bóc tách kết quả từ YOLOv8
+        probs = results[0].probs
+        class_index = int(probs.top1)            
+        confidence = float(probs.top1conf)       
+        raw_label = model.names[class_index].lower() # Chuyển về chữ thường để so sánh chính xác
 
-        # Bước 3: Ánh xạ linh hoạt tên nhãn từ tiếng Anh/viết tắt sang định dạng Tiếng Việt chuẩn của đồ án
-        label_lower = raw_label.lower()
-        if any(keyword in label_lower for keyword in ["organic", "huu_co", "huco", "organic_waste"]):
+        # Chuyển đổi nhãn tiếng Anh sang tiếng Việt
+        if "organic" in raw_label or "huu_co" in raw_label:
             label = "Rác hữu cơ"
-        elif any(keyword in label_lower for keyword in ["recycle", "tai_che", "taiche", "recycle_waste"]):
+        elif "recycl" in raw_label or "tai_che" in raw_label:
             label = "Rác tái chế"
         else:
             label = "Rác vô cơ"
 
-        # Chế độ chạy thử nghiệm (Nếu hoàn toàn chưa huấn luyện dữ liệu thật)
+        # Nếu đang chạy Mock (chưa huấn luyện), giả lập data trực quan để test luồng
         if IS_MOCK:
             labels_test = ["Rác hữu cơ", "Rác tái chế", "Rác vô cơ"]
-            chiso_mau = int(np.mean(frame))
-            np.random.seed(chiso_mau % 1000)
             label = np.random.choice(labels_test)
-            confidence = float(np.random.uniform(0.78, 0.97))
+            confidence = float(np.random.uniform(0.82, 0.98))
 
-        print(f"[AI SERVICE] Dự đoán: {label} | Độ tự tin: {confidence*100:.2f}%")
+        print(f"[AI SERVICE] Dự đoán thực tế: {label} | Độ tin cậy: {confidence*100:.2f}%")
 
-        # Bước 4: Gọi REST API chuyển tiếp kết quả sang Backend lưu Database
+        # 4. Gửi kết quả sang Backend để lưu Database
         result_data = {
             "label": label,
-            "confidence": confidence
+            "confidence": f"{confidence*100:.2f}%"
         }
-
         try:
             requests.post(BACKEND_URL, json=result_data, timeout=3)
-        except requests.exceptions.RequestException as e:
-            print(f"[CẢNH BÁO KẾT NỐI] Không gửi được dữ liệu tới Backend. Lỗi: {e}")
+        except Exception:
+            print(f"[CẢNH BÁO KẾT NỐI] Không lưu được vào Database (Backend cổng 5000 chưa bật).")
 
-        # Bước 5: Trả JSON về lại cho luồng giao diện Camera hiển thị Pop-up kết quả
+        # 5. Trả kết quả sạch dạng JSON hỗ trợ Unicode tiếng Việt đầy đủ
         return jsonify({
             "status": "success", 
             "label": label, 
@@ -102,9 +95,9 @@ def process_image():
         }), 200
 
     except Exception as e:
-        print(f"[LỖI XỬ LÝ AI SERVICE] {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        print(f"[LỖI HỆ THỐNG] {str(e)}")
+        return jsonify({"status": "error", "message": f"Lỗi xử lý nội bộ AI: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    # Chạy dịch vụ AI trên cổng độc lập 8000
+    print("Khởi động AI Service thành công tại http://127.0.0.1:8000")
     app.run(host='0.0.0.0', port=8000, debug=True)

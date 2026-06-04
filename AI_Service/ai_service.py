@@ -13,38 +13,39 @@ app.config['JSON_AS_ASCII'] = False
 # Địa chỉ API của dịch vụ Backend lưu Database
 BACKEND_URL = "http://127.0.0.1:5000/save-result"
 
-# Nạp model
+# Nạp model bằng đường dẫn tuyệt đối (Chống lệch thư mục làm việc)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(CURRENT_DIR, "best.pt")
+MOCK_PATH = os.path.join(CURRENT_DIR, "runs", "detect", "train", "weights", "best.pt")
 
 print("=" * 60)
-print("[HỆ THỐNG AI] Đang khởi tạo mô hình nhận diện...")
+print("[HỆ THỐNG AI] Đang khởi tạo mô hình nhận diện OBJECT DETECTION...")
 
-if os.path.exists(MODEL_PATH):
-    model = YOLO(MODEL_PATH)
-    print(f"[THÀNH CÔNG] Đã nạp mô hình YOLOv8 chính thức tại: {MODEL_PATH}")
-    IS_MOCK = False
-else:
-    MOCK_PATH = os.path.join(CURRENT_DIR, "runs", "classify", "train", "weights", "best.pt")
-    if os.path.exists(MOCK_PATH):
-        model = YOLO(MOCK_PATH)
-        print(f"[TẠM THỜI] Đang nạp mô hình từ thư mục huấn luyện: {MOCK_PATH}")
-        IS_MOCK = False
-    else:
-        print(f"[CẢNH BÁO] Không tìm thấy file model. Đang dùng model gốc yolov8n-cls.pt để chạy thử.")
-        model = YOLO("yolov8n-cls.pt")
-        IS_MOCK = True
+ACTIVE_MODEL_PATH = MODEL_PATH if os.path.exists(MODEL_PATH) else MOCK_PATH if os.path.exists(MOCK_PATH) else None
+
+if not ACTIVE_MODEL_PATH:
+    print("\n" + "!" * 60)
+    print("[LỖI NGHIÊM TRỌNG] Không tìm thấy bất kỳ file 'best.pt' nào!")
+    print(f"-> Giải pháp: Hãy đảm bảo file 'best.pt' đang nằm tại: {MODEL_PATH}")
+    print("!" * 60 + "\n")
+    raise FileNotFoundError("Hệ thống bắt buộc phải có file model 'best.pt' để khởi động!")
+
+try:
+    model = YOLO(ACTIVE_MODEL_PATH)
+    print(f"[THÀNH CÔNG] Đã nạp mô hình YOLOv8 chuẩn xác từ: {ACTIVE_MODEL_PATH}")
+except Exception as e:
+    print(f"[LỖI CRASH] File 'best.pt' bị lỗi cấu trúc hoặc không thể nạp: {e}")
+    raise e
 print("=" * 60)
 
 @app.route('/upload-image', methods=['POST'])
 def process_image():
-    """API nhận ảnh từ Camera/File, đưa cho YOLO phân loại và chuyển tiếp sang Backend"""
-    # Bẫy lỗi kiểm tra sự tồn tại của file ảnh trong request gửi đến
+    """API nhận ảnh từ Camera/File, đưa cho YOLO Detect và chuyển tiếp sang Backend"""
     if 'image' not in request.files:
         return jsonify({"status": "error", "message": "Không tìm thấy dữ liệu túi file mang tên 'image' trong Request!"}), 400
     
     try:
-        # 1. Đọc ảnh từ Request
+        # 1. Đọc ảnh từ Request gửi sang (Giữ nguyên hệ màu gốc không đổi sang RGB)
         file = request.files['image']
         npimg = np.frombuffer(file.read(), np.uint8)
         frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
@@ -52,42 +53,55 @@ def process_image():
         if frame is None:
             return jsonify({"status": "error", "message": "Dữ liệu ảnh truyền sang bị hỏng, không thể giải mã!"}), 400
 
-        # 2. Đưa ảnh vào YOLOv8 để dự đoán
-        results = model(frame)
+        # ============================================================
+        # 2. ĐƯA ẢNH VÀO MÔ HÌNH DỰ ĐOÁN (THUẦN DETECT)
+        # ============================================================
+        results = model(frame) 
+        result = results[0]
         
-        # 3. Bóc tách kết quả từ YOLOv8
-        probs = results[0].probs
-        class_index = int(probs.top1)            
-        confidence = float(probs.top1conf)       
-        raw_label = model.names[class_index].lower() # Chuyển về chữ thường để so sánh chính xác
+        # ============================================================
+        # 3. BÓC TÁCH KẾT QUẢ ĐÃ LỌC SẠCH (CHỈ GIỮ LẠI OBJECT DETECTION)
+        # ============================================================
+        if hasattr(result, 'boxes') and result.boxes is not None and len(result.boxes) > 0:
+            # Lấy vật thể đầu tiên tìm thấy trong ảnh
+            class_index = int(result.boxes.cls[0])
+            confidence = float(result.boxes.conf[0])
+        else:
+            class_index = -1
+            confidence = 0.0
 
-        # Chuyển đổi nhãn tiếng Anh sang tiếng Việt
-        if "organic" in raw_label or "huu_co" in raw_label:
+        if class_index != -1 and class_index in model.names:
+            raw_label = model.names[class_index].lower()
+        else:
+            raw_label = "unknown"
+
+        # ============================================================
+        # ĐÃ SỬA: ĐỔI THỨ TỰ ĐỂ TRÁNH BẮT NHẦM CHUỖI CON "ORGANIC"
+        # ============================================================
+        if "inorganic" in raw_label or "vo_co" in raw_label:
+            label = "Rác vô cơ"
+        elif "organic" in raw_label or "huu_co" in raw_label:
             label = "Rác hữu cơ"
         elif "recycl" in raw_label or "tai_che" in raw_label:
             label = "Rác tái chế"
+        elif "hazard" in raw_label or "doc_hai" in raw_label:
+            label = "Rác độc hại"
         else:
-            label = "Rác vô cơ"
+            label = "Không nhận diện được"
 
-        # Nếu đang chạy Mock (chưa huấn luyện), giả lập data trực quan để test luồng
-        if IS_MOCK:
-            labels_test = ["Rác hữu cơ", "Rác tái chế", "Rác vô cơ"]
-            label = np.random.choice(labels_test)
-            confidence = float(np.random.uniform(0.82, 0.98))
+        print(f"[AI SERVICE] Object Detection -> Nhãn gốc: '{raw_label}' | Nhãn dịch: '{label}' | Độ tin cậy: {confidence*100:.2f}%")
 
-        print(f"[AI SERVICE] Dự đoán thực tế: {label} | Độ tin cậy: {confidence*100:.2f}%")
-
-        # 4. Gửi kết quả sang Backend để lưu Database
+        # 4. Gửi kết quả dạng số thực thuần túy sang Backend để lưu Database (cổng 5000)
         result_data = {
             "label": label,
-            "confidence": f"{confidence*100:.2f}%"
+            "confidence": str(confidence)
         }
         try:
             requests.post(BACKEND_URL, json=result_data, timeout=3)
         except Exception:
             print(f"[CẢNH BÁO KẾT NỐI] Không lưu được vào Database (Backend cổng 5000 chưa bật).")
 
-        # 5. Trả kết quả sạch dạng JSON hỗ trợ Unicode tiếng Việt đầy đủ
+        # 5. Trả kết quả sạch định dạng phần trăm về cho giao diện hiển thị
         return jsonify({
             "status": "success", 
             "label": label, 
@@ -95,9 +109,9 @@ def process_image():
         }), 200
 
     except Exception as e:
-        print(f"[LỖI HỆ THỐNG] {str(e)}")
+        print(f"[LỖI HỆ THỐNG CRASH TRONG KHỐI XỬ LÝ DETECT]: {str(e)}")
         return jsonify({"status": "error", "message": f"Lỗi xử lý nội bộ AI: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    print("Khởi động AI Service thành công tại http://127.0.0.1:8000")
+    print("Khởi động AI Service (Object Detection Mode) tại http://127.0.0.1:8000")
     app.run(host='0.0.0.0', port=8000, debug=True)

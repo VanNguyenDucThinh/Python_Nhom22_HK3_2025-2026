@@ -1,7 +1,10 @@
-# main.py
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
 import cv2
 import tkinter as tk
 from tkinter import filedialog, messagebox
+import threading 
+
 from image_processor import resize_image, convert_frame_to_bytes
 from api_client import upload_waste_image
 from camera_handler import capture_from_webcam
@@ -9,56 +12,95 @@ from camera_handler import capture_from_webcam
 def quy_trinh_xu_ly_va_gui_anh(frame):
     """Quy trình khép kín: Tiền xử lý -> Đóng gói -> Gửi API"""
     try:
+        if frame is None:
+            messagebox.showwarning("Thông báo", "Không nhận được dữ liệu hình ảnh!")
+            return
+
         anh_sach = resize_image(frame)
         du_lieu_bytes = convert_frame_to_bytes(anh_sach)
         
-        print("Đang gửi ảnh sang hệ thống...")
+        print("Đang gửi ảnh sang hệ thống AI để dự đoán...")
         ket_qua = upload_waste_image(du_lieu_bytes)
         
-        # Hiển thị thông báo dạng Pop-up cho người dùng biết kết quả
-        messagebox.showinfo("Kết quả phân loại", f"Hệ thống trả về:\n{ket_qua}")
+        # Kiểm tra dữ liệu trả về chuẩn xác
+        if isinstance(ket_qua, dict):
+            if ket_qua.get("status") == "success":
+                nhan_rac = ket_qua.get("label", "Không rõ")
+                do_chinh_xac = ket_qua.get("confidence", "0%")
+                thong_bao = f"🏷️ Loại rác nhận diện: {nhan_rac}\n🎯 Độ tin cậy: {do_chinh_xac}"
+                messagebox.showinfo("KẾT QUẢ PHÂN LOẠI", thong_bao)
+            else:
+                loi_nhan = ket_qua.get("message", "Lỗi không xác định từ AI Service")
+                messagebox.showwarning("Thông báo hệ thống", f"AI phản hồi: {loi_nhan}")
+        else:
+            messagebox.showerror("Lỗi kết nối", f"Server phản hồi sai định dạng:\n{ket_qua}")
         
     except Exception as e:
-        messagebox.showerror("Lỗi", f"Có lỗi xảy ra: {e}")
+        messagebox.showerror("Lỗi hệ thống", f"Có lỗi xảy ra trong quá trình xử lý: {e}")
 
 def hanh_dong_tai_anh_tu_file():
-    """Logic cho Nút bấm 1: Chọn ảnh từ thiết bị"""
+    """Xử lý tải ảnh từ máy tính chạy ngầm để không đơ UI"""
     duong_dan_anh = filedialog.askopenfilename(
         filetypes=[("Image files", "*.jpg *.jpeg *.png")]
     )
     
     if duong_dan_anh:
-        frame = cv2.imread(duong_dan_anh, cv2.IMREAD_COLOR)
-        if frame is None:
-            messagebox.showwarning("Cảnh báo", "Không thể đọc ảnh. Vui lòng thử lại.")
-            return
-        quy_trinh_xu_ly_va_gui_anh(frame)
+        def luong_xu_ly_anh_upload():
+            frame = cv2.imread(duong_dan_anh)
+            if frame is not None:
+                quy_trinh_xu_ly_va_gui_anh(frame)
+            else:
+                messagebox.showerror("Lỗi đọc file", "Hệ thống không thể mở file ảnh này!")
+                
+        threading.Thread(target=luong_xu_ly_anh_upload, daemon=True).start()
 
 def hanh_dong_su_dung_camera():
-    """Logic cho Nút bấm 2: Sử dụng webcam"""
-    capture_from_webcam(quy_trinh_xu_ly_va_gui_anh)
+    """Bật luồng Camera chạy song song với UI"""
+    threading.Thread(target=capture_from_webcam, args=(quy_trinh_xu_ly_va_gui_anh,), daemon=True).start()
 
 def main():
-    """Xây dựng giao diện người dùng (GUI) với Tkinter"""
-    # Khởi tạo cửa sổ chính
     root = tk.Tk()
     root.title("Hệ Thống Phân Loại Rác Thải")
-    root.geometry("400x250") # Cài đặt kích thước cửa sổ
     
-    # Tiêu đề
-    label_title = tk.Label(root, text="CHỌN PHƯƠNG THỨC LẤY ẢNH", font=("Arial", 14, "bold"))
-    label_title.pack(pady=20)
+    window_width = 600
+    window_height = 450
     
-    # NÚT BẤM 1: Lấy ảnh từ thiết bị
-    btn_upload = tk.Button(root, text="Tải ảnh từ máy tính", font=("Arial", 12), width=25, height=2, bg="#4CAF50", fg="white", command=hanh_dong_tai_anh_tu_file)
-    btn_upload.pack(pady=10)
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    center_x = int((screen_width - window_width) / 2)
+    center_y = int((screen_height - window_height) / 2)
     
-    # NÚT BẤM 2: Sử dụng Camera
-    btn_camera = tk.Button(root, text="Sử dụng Camera trực tiếp", font=("Arial", 12), width=25, height=2, bg="#2196F3", fg="white", command=hanh_dong_su_dung_camera)
-    btn_camera.pack(pady=10)
+    root.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}') 
     
-    # Chạy vòng lặp duy trì cửa sổ
+    # ĐÃ SỬA: Xóa bỏ hoàn toàn ký tự gạch chéo ngược gây lỗi cú pháp
+    label_title = tk.Label(root, text="CHỌN PHƯƠNG THỨC LẤY ẢNH", font=("Arial", 16, "bold"))
+    label_title.pack(pady=40)
+    
+    btn_upload = tk.Button(
+        root, 
+        text="TẢI ẢNH TỪ MÁY TÍNH", 
+        command=hanh_dong_tai_anh_tu_file, 
+        width=30, 
+        height=2, 
+        bg="#3498db", 
+        fg="white", 
+        font=("Arial", 11, "bold")
+    )
+    btn_upload.pack(pady=15)
+    
+    btn_camera = tk.Button(
+        root, 
+        text="SỬ DỤNG WEBCAM TRỰC TIẾP", 
+        command=hanh_dong_su_dung_camera, 
+        width=30, 
+        height=2, 
+        bg="#2ecc71", 
+        fg="white", 
+        font=("Arial", 11, "bold")
+    )
+    btn_camera.pack(pady=15)
+    
     root.mainloop()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

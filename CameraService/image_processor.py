@@ -1,22 +1,30 @@
-# image_processor.py
+# CameraService/image_processor.py
 import cv2
-from config import TARGET_IMAGE_SIZE
 
 def resize_image(frame):
-    """Thay đổi kích thước khung hình về chuẩn AI yêu cầu"""
+    """
+    [CẬP NHẬT CHO YOLOv8]: Không còn ép kích thước cố định làm bóp méo hình ảnh nữa.
+    Trả về nguyên bản khung hình để YOLOv8 tự động xử lý đệm ảnh (Letterboxing) thông minh,
+    giúp tối ưu hóa độ chính xác khi nhận diện vật thể.
+    """
     if frame is None:
-        raise ValueError("Frame ảnh không hợp lệ.")
-    return cv2.resize(frame, TARGET_IMAGE_SIZE)
+        raise ValueError("Khung hình ảnh không hợp lệ (None).")
+    
+    # Trả về chính nó mà không thay đổi kích thước (Chống méo hình)
+    return frame
 
 def convert_frame_to_bytes(frame):
-    """Mã hóa ma trận ảnh OpenCV thành dữ liệu nhị phân (bytes) để gửi qua API"""
+    """
+    Mã hóa ma trận ảnh OpenCV thành dữ liệu nhị phân (bytes) chất lượng cao 
+    để đóng gói gửi qua REST API (Multipart/Form-Data).
+    """
     if frame is None:
-        raise ValueError("Frame ảnh không hợp lệ.")
+        raise ValueError("Khung hình ảnh không hợp lệ để mã hóa.")
 
-    # Mã hóa ảnh sang định dạng .jpg trong bộ nhớ tạm
+    # Mã hóa ảnh sang định dạng đuôi mở rộng .jpg trong bộ nhớ tạm
     success, encoded_image = cv2.imencode('.jpg', frame)
     if not success:
-        raise ValueError("Không thể mã hóa hình ảnh.")
+        raise ValueError("Hệ thống không thể mã hóa hình ảnh sang định dạng JPEG.")
     
-    # Chuyển đổi thành chuỗi bytes nhị phân
+    # Chuyển đổi mảng ma trận tạm thành chuỗi bytes nhị phân thuần túy
     return encoded_image.tobytes()

@@ -1,6 +1,14 @@
+import sys
 import os
 from PIL import Image
 import customtkinter as ctk
+
+# Thêm đường dẫn gốc để gọi chéo thư mục
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.dirname(current_dir)
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+
 from view.select_cam_view import SelectCamView
 from view.camera_view import CameraView
 
@@ -31,7 +39,6 @@ class MainApp(ctk.CTk):
         self.header_frame = ctk.CTkFrame(self, height=60, corner_radius=0, fg_color="transparent")
         self.header_frame.grid(row=0, column=0, sticky="ew", padx=30, pady=15)
 
-        current_dir = os.path.dirname(os.path.abspath(__file__))
         assets_dir = os.path.join(current_dir, "assets")
 
         try:

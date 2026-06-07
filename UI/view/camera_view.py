@@ -1,7 +1,17 @@
 import os
 import cv2
+import threading
+import queue
+import time
 import customtkinter as ctk
-from PIL import Image
+from PIL import Image, ImageTk
+
+# KẾT NỐI VỚI MODULE CAMERA_SERVICE
+try:
+    from CameraService import image_processor
+    from CameraService import api_client
+except ImportError:
+    image_processor = api_client = None
 
 class CameraView(ctk.CTkFrame):
     def __init__(self, master, cam_id=0, switch_view_callback=None, **kwargs):
@@ -12,8 +22,15 @@ class CameraView(ctk.CTkFrame):
         self.cap = None
         self.is_running = False
         
+        # Hàng đợi an toàn cho đa luồng
+        self._upload_queue = queue.Queue()
+        self._result_queue = queue.Queue() 
+        self._last_frame = None
+        self._current_tk_image = None
+        
         self._setup_ui()
         self._start_camera()
+        self._start_uploader()
 
     def _setup_ui(self):
         self.grid_columnconfigure(0, weight=2)
@@ -64,7 +81,6 @@ class CameraView(ctk.CTkFrame):
         self.right_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.right_frame.grid(row=0, column=1, sticky="nsew")
 
-        # Khung Kết quả
         self.result_frame = ctk.CTkFrame(self.right_frame, fg_color="white", corner_radius=10)
         self.result_frame.pack(fill="x", pady=(0, 10))
         
@@ -72,7 +88,6 @@ class CameraView(ctk.CTkFrame):
         self.result_label = ctk.CTkLabel(self.result_frame, text="[📷]\nChụp hoặc tải ảnh lên để phân tích", text_color="#829ab1", justify="center")
         self.result_label.pack(pady=(20, 50))
 
-        # Khung Hướng dẫn phân loại
         self.guide_frame = ctk.CTkFrame(self.right_frame, fg_color="#f0fdf4", border_width=1, border_color="#d1e7dd", corner_radius=10)
         self.guide_frame.pack(fill="both", expand=True)
         
@@ -98,29 +113,94 @@ class CameraView(ctk.CTkFrame):
 
     def _start_camera(self):
         self.cap = cv2.VideoCapture(self.cam_id, cv2.CAP_DSHOW)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
         if not self.cap.isOpened():
             self.video_label.configure(text="Lỗi: Không kết nối được Camera!", text_color="red")
             return
         
         self.is_running = True
+        
+        # CHẠY LUỒNG NGẦM XỬ LÝ CAMERA
+        threading.Thread(target=self._camera_reader_thread, daemon=True).start()
         self._update_frame()
+
+    def _camera_reader_thread(self):
+        while self.is_running and self.cap.isOpened():
+            ret, frame = self.cap.read()
+            if ret:
+                self._last_frame = cv2.flip(frame, 1)
+            time.sleep(0.01)
 
     def _update_frame(self):
         if not self.is_running:
             return
 
-        ret, frame = self.cap.read()
-        if ret:
-            frame = cv2.flip(frame, 1)
+        if self._last_frame is not None:
+            # TỐI ƯU RENDER BẰNG IMAGETK GỐC
+            frame = cv2.resize(self._last_frame, (640, 480))
             cv2_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_image = Image.fromarray(cv2_image)
-            ctk_image = ctk.CTkImage(light_image=pil_image, size=(640, 480))
-            self.video_label.configure(image=ctk_image, text="")
-        
-        self.after(15, self._update_frame)
+            
+            self._current_tk_image = ImageTk.PhotoImage(image=pil_image)
+            self.video_label.configure(image=self._current_tk_image, text="")
+
+        self.after(30, self._update_frame)
 
     def _capture_image(self):
-        pass
+        if self._last_frame is None:
+            self.result_label.configure(text="Không có khung ảnh để chụp.", text_color="red")
+            return
+
+        small_frame = cv2.resize(self._last_frame, (320, 240))
+        
+        if image_processor:
+            try:
+                img_bytes = image_processor.convert_frame_to_bytes(small_frame)
+                self._upload_queue.put(img_bytes)
+                self.result_label.configure(text="Đang phân tích dữ liệu...", text_color="#0d6efd")
+            except Exception as e:
+                self.result_label.configure(text=f"Lỗi mã hóa: {e}", text_color="red")
+        else:
+             self.result_label.configure(text="Đã chụp! (Chưa kết nối module xử lý API)", text_color="orange")
+
+    def _start_uploader(self):
+        threading.Thread(target=self._uploader_worker, daemon=True).start()
+        self._poll_results()
+
+    def _uploader_worker(self):
+        while True:
+            item = self._upload_queue.get()
+            if item is None: break
+            
+            try:
+                if api_client:
+                    result = api_client.upload_waste_image(item)
+                else:
+                    result = {"status": "error", "message": "Chưa kết nối API"}
+            except Exception as exc:
+                result = {"status": "error", "message": str(exc)}
+            
+            self._result_queue.put(result)
+
+    def _poll_results(self):
+        try:
+            while True:
+                result = self._result_queue.get_nowait()
+                self._on_upload_result(result)
+        except queue.Empty:
+            pass
+        self.after(100, self._poll_results)
+
+    def _on_upload_result(self, result):
+        if isinstance(result, dict) and result.get("status") != "error":
+            label = result.get("label", "Không rõ")
+            conf = result.get("confidence", "")
+            self.result_label.configure(text=f"📦 {label}\nTin cậy: {conf}", text_color="#00b050")
+        else:
+            msg = result.get("message", "Lỗi mạng") if isinstance(result, dict) else str(result)
+            self.result_label.configure(text=f"Lỗi: {msg}", text_color="red")
 
     def _go_back(self):
         if self.switch_view_callback:
@@ -130,4 +210,5 @@ class CameraView(ctk.CTkFrame):
         self.is_running = False
         if self.cap and self.cap.isOpened():
             self.cap.release()
+        self._upload_queue.put(None)
         super().destroy()

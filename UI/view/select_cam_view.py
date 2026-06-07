@@ -1,5 +1,6 @@
 import os
 import cv2
+import threading
 import customtkinter as ctk
 from PIL import Image
 
@@ -28,16 +29,34 @@ class SelectCamView(ctk.CTkFrame):
         self.title_label = ctk.CTkLabel(self.center_frame, text="Chọn Camera", font=ctk.CTkFont(size=24, weight="bold"))
         self.title_label.pack(pady=(0, 5))
 
-        self.subtitle_label = ctk.CTkLabel(self.center_frame, text="Đang quét thiết bị...", text_color="gray")
+        self.subtitle_label = ctk.CTkLabel(self.center_frame, text="Đang quét thiết bị phần cứng (Vui lòng đợi)...", text_color="gray")
         self.subtitle_label.pack(pady=(0, 30))
 
-        # Ép UI render dòng text "Đang quét..." trước khi chạy vòng lặp nặng
-        self.update_idletasks()
-        self._render_camera_options()
+        # Khung chứa các nút bấm
+        self.options_frame = ctk.CTkFrame(self.center_frame, fg_color="transparent")
+        self.options_frame.pack(fill="both", expand=True)
 
-    def _render_camera_options(self):
+        self.update_idletasks() # Ép UI hiện dòng text "Đang quét..."
+        
+        # CHẠY LUỒNG NGẦM QUÉT CAMERA ĐỂ KHÔNG BỊ ĐƠ APP
+        threading.Thread(target=self._scan_cameras_worker, daemon=True).start()
+
+    def _scan_cameras_worker(self):
         camera_list = self._detect_available_cameras()
+        # Đẩy dữ liệu về luồng UI chính sau khi quét xong
+        self.after(0, lambda: self._render_camera_options(camera_list))
 
+    def _detect_available_cameras(self):
+        available_cams = []
+        for i in range(4):
+            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+            if cap.isOpened():
+                name = "Camera Mặc Định" if i == 0 else f"Camera Rời (Cổng {i})"
+                available_cams.append({"name": name, "id": str(i)})
+                cap.release()
+        return available_cams
+
+    def _render_camera_options(self, camera_list):
         if not camera_list:
             self.subtitle_label.configure(text="Không tìm thấy camera nào kết nối với máy tính!", text_color="red")
             return
@@ -46,7 +65,7 @@ class SelectCamView(ctk.CTkFrame):
 
         for cam in camera_list:
             cam_btn = ctk.CTkButton(
-                self.center_frame, 
+                self.options_frame, 
                 text=f" {cam['name']}\n ID: {cam['id']}", 
                 image=self.img_cam_small, compound="left",
                 height=60, width=400, corner_radius=10,
@@ -54,18 +73,6 @@ class SelectCamView(ctk.CTkFrame):
                 command=lambda c=cam['id']: self._handle_camera_select(c)
             )
             cam_btn.pack(pady=8)
-
-    def _detect_available_cameras(self):
-        """Quét các cổng camera đang hoạt động."""
-        available_cams = []
-        for i in range(4):
-            # Dùng CAP_DSHOW để quét nhanh, không bị treo
-            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
-            if cap.isOpened():
-                name = "Camera Máy Tính" if i == 0 else f"Camera Rời (Cổng {i})"
-                available_cams.append({"name": name, "id": str(i)})
-                cap.release()
-        return available_cams
 
     def _handle_camera_select(self, cam_id):
         if self.switch_view_callback:

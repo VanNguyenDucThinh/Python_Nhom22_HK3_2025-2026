@@ -15,7 +15,6 @@ class MainApp(ctk.CTk):
         self.geometry("1000x700")
         self.minsize(800, 600)
 
-        # Layout chính
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=0)
         self.grid_rowconfigure(1, weight=0)
@@ -29,31 +28,25 @@ class MainApp(ctk.CTk):
         self.show_select_cam_view()
 
     def _setup_header(self):
-        """Setup Navbar ngang."""
         self.header_frame = ctk.CTkFrame(self, height=60, corner_radius=0, fg_color="transparent")
         self.header_frame.grid(row=0, column=0, sticky="ew", padx=30, pady=15)
 
-        # Load assets
         current_dir = os.path.dirname(os.path.abspath(__file__))
         assets_dir = os.path.join(current_dir, "assets")
 
         try:
             img_logo = ctk.CTkImage(Image.open(os.path.join(assets_dir, "logo.png")), size=(24, 24))
             img_cam = ctk.CTkImage(Image.open(os.path.join(assets_dir, "camera.png")), size=(20, 20))
-            # SỬA LỖI: Đổi data.png thành database.png cho khớp thư mục
             img_data = ctk.CTkImage(Image.open(os.path.join(assets_dir, "database.png")), size=(20, 20))
         except FileNotFoundError:
-            print("Lỗi: Không tìm thấy ảnh trong assets!")
             img_logo = img_cam = img_data = None
 
-        # Logo bên trái
         self.logo_label = ctk.CTkLabel(
             self.header_frame, text=" Phân Loại Rác", image=img_logo,
             compound="left", font=ctk.CTkFont(size=20, weight="bold")
         )
         self.logo_label.pack(side="left")
 
-        # Nút điều hướng bên phải
         self.btn_dashboard = ctk.CTkButton(
             self.header_frame, text=" Dữ Liệu", image=img_data, compound="left",
             command=self.show_dashboard_view,
@@ -68,7 +61,6 @@ class MainApp(ctk.CTk):
         )
         self.btn_camera.pack(side="right")
 
-        # Đường gạch ngang
         self.separator = ctk.CTkFrame(self, height=1, fg_color="#dee2e6")
         self.separator.grid(row=1, column=0, sticky="ew")
 
@@ -79,6 +71,8 @@ class MainApp(ctk.CTk):
     def switch_view(self, target_view, **kwargs):
         if target_view == "camera_view":
             self.show_camera_view(kwargs.get("selected_cam_id"))
+        elif target_view == "select_cam":
+            self.show_select_cam_view()
 
     def show_select_cam_view(self):
         self.clear_main_frame()
@@ -87,7 +81,7 @@ class MainApp(ctk.CTk):
 
     def show_camera_view(self, cam_id=0):
         self.clear_main_frame()
-        view = CameraView(self.main_frame, cam_id=cam_id)
+        view = CameraView(self.main_frame, cam_id=cam_id, switch_view_callback=self.switch_view)
         view.pack(fill="both", expand=True)
 
     def show_dashboard_view(self):

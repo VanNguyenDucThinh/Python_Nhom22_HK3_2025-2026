@@ -1,117 +1,111 @@
-# AI_Service/ai_service.py
 import os
-import cv2
-import numpy as np
+import io
+import sys
 import requests
 from flask import Flask, request, jsonify
+from flask_cors import CORS
+import numpy as np
+import cv2
 from ultralytics import YOLO
 
 app = Flask(__name__)
-# Ép Flask trả về chuỗi tiếng Việt Unicode thô thay vì ép sang mã ASCII (\xef...)
-app.config['JSON_AS_ASCII'] = False  
+CORS(app)  # Cho phep cac dịch vu khac port goi den nhau vinh vien
 
-# Địa chỉ API của dịch vụ Backend lưu Database
+# =========================================================================
+# FIX LỖI 1: Chuyển port từ 8000 sang 5000 để AI Service gọi đúng vào Backend
+# =========================================================================
 BACKEND_URL = "http://127.0.0.1:5000/save-result"
 
-# Nạp model bằng đường dẫn tuyệt đối (Chống lệch thư mục làm việc)
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(CURRENT_DIR, "best.pt")
-MOCK_PATH = os.path.join(CURRENT_DIR, "runs", "detect", "train", "weights", "best.pt")
+# Xác định đường dẫn mô hình YOLOv8
+AI_SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(AI_SERVICE_DIR)
+MODEL_PATH = os.path.join(PROJECT_ROOT, "runs", "detect", "train", "weights", "best.pt")
 
-print("=" * 60)
-print("[HỆ THỐNG AI] Đang khởi tạo mô hình nhận diện OBJECT DETECTION...")
-
-ACTIVE_MODEL_PATH = MODEL_PATH if os.path.exists(MODEL_PATH) else MOCK_PATH if os.path.exists(MOCK_PATH) else None
-
-if not ACTIVE_MODEL_PATH:
-    print("\n" + "!" * 60)
-    print("[LỖI NGHIÊM TRỌNG] Không tìm thấy bất kỳ file 'best.pt' nào!")
-    print(f"-> Giải pháp: Hãy đảm bảo file 'best.pt' đang nằm tại: {MODEL_PATH}")
-    print("!" * 60 + "\n")
-    raise FileNotFoundError("Hệ thống bắt buộc phải có file model 'best.pt' để khởi động!")
+print(f"[AI SERVICE] Dang tai mo hinh tu: {MODEL_PATH}")
 
 try:
-    model = YOLO(ACTIVE_MODEL_PATH)
-    print(f"[THÀNH CÔNG] Đã nạp mô hình YOLOv8 chuẩn xác từ: {ACTIVE_MODEL_PATH}")
+    model = YOLO(MODEL_PATH)
+    print("[AI SERVICE] Tai mo hinh YOLOv8 thanh cong!")
 except Exception as e:
-    print(f"[LỖI CRASH] File 'best.pt' bị lỗi cấu trúc hoặc không thể nạp: {e}")
-    raise e
-print("=" * 60)
+    print(f"[AI SERVICE LỖI NẶNG]: Khong the tai mo hinh. Chi tiet: {e}")
+    sys.exit(1)
 
-@app.route('/upload-image', methods=['POST'])
-def process_image():
-    """API nhận ảnh từ Camera/File, đưa cho YOLO Detect và chuyển tiếp sang Backend"""
+@app.route('/predict', methods=['POST'])
+def predict():
     if 'image' not in request.files:
-        return jsonify({"status": "error", "message": "Không tìm thấy dữ liệu túi file mang tên 'image' trong Request!"}), 400
-    
+        return jsonify({"status": "error", "message": "Khong tim thay file anh trong yeu cau"}), 400
+
     try:
-        # 1. Đọc ảnh từ Request gửi sang (Giữ nguyên hệ màu gốc không đổi sang RGB)
+        # Doc anh tu request gửi len
         file = request.files['image']
-        npimg = np.frombuffer(file.read(), np.uint8)
-        frame = cv2.imdecode(npimg, cv2.IMREAD_COLOR)
+        in_memory_file = io.BytesIO()
+        file.save(in_memory_file)
+        data = np.frombuffer(in_memory_file.getvalue(), dtype=np.uint8)
+        image = cv2.imdecode(data, cv2.IMREAD_COLOR)
 
-        if frame is None:
-            return jsonify({"status": "error", "message": "Dữ liệu ảnh truyền sang bị hỏng, không thể giải mã!"}), 400
+        if image is None:
+            return jsonify({"status": "error", "message": "File anh bi loi hoac khong hop le"}), 400
 
-        # ============================================================
-        # 2. ĐƯA ẢNH VÀO MÔ HÌNH DỰ ĐOÁN (THUẦN DETECT)
-        # ============================================================
-        results = model(frame) 
-        result = results[0]
+        # Dua vao YOLOv8 de du doan phan loai rac
+        results = model(image)
         
-        # ============================================================
-        # 3. BÓC TÁCH KẾT QUẢ ĐÃ LỌC SẠCH (CHỈ GIỮ LẠI OBJECT DETECTION)
-        # ============================================================
-        if hasattr(result, 'boxes') and result.boxes is not None and len(result.boxes) > 0:
-            # Lấy vật thể đầu tiên tìm thấy trong ảnh
-            class_index = int(result.boxes.cls[0])
-            confidence = float(result.boxes.conf[0])
-        else:
-            class_index = -1
-            confidence = 0.0
+        raw_label = "Khong xac dinh"
+        confidence = 0.0
 
-        if class_index != -1 and class_index in model.names:
-            raw_label = model.names[class_index].lower()
-        else:
-            raw_label = "unknown"
+        for result in results:
+            boxes = result.boxes
+            if len(boxes) > 0:
+                # Lay doi tuong co do tin cay cao nhat trong anh
+                best_box_idx = np.argmax(boxes.conf.cpu().numpy())
+                class_id = int(boxes.cls[best_box_idx])
+                raw_label = model.names[class_id]
+                confidence = float(boxes.conf[best_box_idx])
+                break
 
-        # ============================================================
-        # ĐÃ SỬA: ĐỔI THỨ TỰ ĐỂ TRÁNH BẮT NHẦM CHUỖI CON "ORGANIC"
-        # ============================================================
-        if "inorganic" in raw_label or "vo_co" in raw_label:
-            label = "Rác vô cơ"
-        elif "organic" in raw_label or "huu_co" in raw_label:
+        # =========================================================================
+        # FIX LỖI ĐỒNG BỘ: Dịch nhãn chuẩn theo bộ đếm tiếng Việt và có "Không nhận diện được"
+        # =========================================================================
+        raw_label = raw_label.lower().strip()
+        
+        if "organic" in raw_label or "huu_co" in raw_label or "bio" in raw_label:
             label = "Rác hữu cơ"
-        elif "recycl" in raw_label or "tai_che" in raw_label:
+        elif "recycle" in raw_label or "tai_che" in raw_label:
             label = "Rác tái chế"
         elif "hazard" in raw_label or "doc_hai" in raw_label:
             label = "Rác độc hại"
+        elif "inorganic" in raw_label or "vo_co" in raw_label:
+            label = "Rác vô cơ"
         else:
             label = "Không nhận diện được"
 
-        print(f"[AI SERVICE] Object Detection -> Nhãn gốc: '{raw_label}' | Nhãn dịch: '{label}' | Độ tin cậy: {confidence*100:.2f}%")
+        conf_str = f"{confidence * 100:.2f}%"
+        print(f"[AI SERVICE] Ket qua: {label} ({conf_str})")
 
-        # 4. Gửi kết quả dạng số thực thuần túy sang Backend để lưu Database (cổng 5000)
+        # =========================================================================
+        # FIX LỖI 2: Đổi tham số từ data= thành json= để Flask Backend doc duoc du lieu
+        # =========================================================================
         result_data = {
             "label": label,
-            "confidence": str(confidence)
+            "confidence": conf_str
         }
+        
         try:
-            requests.post(BACKEND_URL, json=result_data, timeout=3)
-        except Exception:
-            print(f"[CẢNH BÁO KẾT NỐI] Không lưu được vào Database (Backend cổng 5000 chưa bật).")
+            # Tu dong ban du lieu sang Backend ngay lap tuc de ghi file .db
+            response_db = requests.post(BACKEND_URL, json=result_data, timeout=3)
+            print(f"[AI SERVICE -> BACKEND]: Trang thai luu DB: {response_db.status_code}")
+        except Exception as err_db:
+            print(f"[CANH BAO]: Khong the ket noi Port 5000 de luu DB. Chi tiet: {err_db}")
 
-        # 5. Trả kết quả sạch định dạng phần trăm về cho giao diện hiển thị
+        # Tra ket qua nguoc lai cho Giao dien hien thi chu mau xanh
         return jsonify({
-            "status": "success", 
-            "label": label, 
-            "confidence": f"{confidence*100:.2f}%"
+            "status": "success",
+            "label": label,
+            "confidence": conf_str
         }), 200
 
     except Exception as e:
-        print(f"[LỖI HỆ THỐNG CRASH TRONG KHỐI XỬ LÝ DETECT]: {str(e)}")
-        return jsonify({"status": "error", "message": f"Lỗi xử lý nội bộ AI: {str(e)}"}), 500
+        print(f"[AI SERVICE LỖI HE THONG]: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
-    print("Khởi động AI Service (Object Detection Mode) tại http://127.0.0.1:8000")
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    app.run(port=8000, debug=True)

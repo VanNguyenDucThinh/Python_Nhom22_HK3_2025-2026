@@ -1,6 +1,6 @@
 # api_client.py
 import requests
-from config import API_URL
+from CameraService.config import API_URL
 
 def upload_waste_image(image_bytes):
     """Đóng gói và gửi dữ liệu ảnh nhị phân qua REST API"""

@@ -22,7 +22,6 @@ class CameraView(ctk.CTkFrame):
         self.cap = None
         self.is_running = False
         
-        # Hàng đợi an toàn cho đa luồng
         self._upload_queue = queue.Queue()
         self._result_queue = queue.Queue() 
         self._last_frame = None
@@ -59,8 +58,15 @@ class CameraView(ctk.CTkFrame):
         )
         self.btn_back.pack(side="left")
 
-        self.video_label = ctk.CTkLabel(self.cam_frame, text="Đang tải Camera...", fg_color="black", corner_radius=10)
-        self.video_label.pack(expand=True, fill="both", padx=10, pady=(10, 0))
+        # --- TẠO KHUNG CHỨA CỐ ĐỊNH CHỐNG LAG ---
+        self.video_container = ctk.CTkFrame(self.cam_frame, fg_color="black", corner_radius=10)
+        self.video_container.pack(expand=True, fill="both", padx=10, pady=(10, 0))
+        
+        # Lệnh "khóa kích thước" - Cắt đứt vòng lặp giật lag
+        self.video_container.pack_propagate(False)
+
+        self.video_label = ctk.CTkLabel(self.video_container, text="Đang tải Camera...", fg_color="black")
+        self.video_label.pack(expand=True, fill="both")
 
         self.btn_frame = ctk.CTkFrame(self.cam_frame, fg_color="transparent")
         self.btn_frame.pack(pady=15)
@@ -122,7 +128,6 @@ class CameraView(ctk.CTkFrame):
         
         self.is_running = True
         
-        # CHẠY LUỒNG NGẦM XỬ LÝ CAMERA
         threading.Thread(target=self._camera_reader_thread, daemon=True).start()
         self._update_frame()
 
@@ -138,13 +143,18 @@ class CameraView(ctk.CTkFrame):
             return
 
         if self._last_frame is not None:
-            # TỐI ƯU RENDER BẰNG IMAGETK GỐC
-            frame = cv2.resize(self._last_frame, (640, 480))
-            cv2_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            pil_image = Image.fromarray(cv2_image)
-            
-            self._current_tk_image = ImageTk.PhotoImage(image=pil_image)
-            self.video_label.configure(image=self._current_tk_image, text="")
+            # Đọc kích thước từ video_container (Khung cố định) thay vì video_label
+            target_width = self.video_container.winfo_width()
+            target_height = self.video_container.winfo_height()
+
+            # Lấp đầy khoảng đen khi khung đã load xong
+            if target_width > 10 and target_height > 10:
+                frame = cv2.resize(self._last_frame, (target_width, target_height))
+                cv2_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                pil_image = Image.fromarray(cv2_image)
+                
+                self._current_tk_image = ImageTk.PhotoImage(image=pil_image)
+                self.video_label.configure(image=self._current_tk_image, text="")
 
         self.after(30, self._update_frame)
 

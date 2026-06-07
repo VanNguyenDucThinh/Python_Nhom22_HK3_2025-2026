@@ -9,7 +9,7 @@ app.config['JSON_AS_ASCII'] = False
 
 # Cấu hình Cơ sở dữ liệu SQLite tại thư mục Backend
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.path.join(BASE_DIR, 'history_database.db')}\""
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.path.join(BASE_DIR, 'history_database.db')}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Tạo thư mục chứa ảnh chụp từ camera nếu chưa có

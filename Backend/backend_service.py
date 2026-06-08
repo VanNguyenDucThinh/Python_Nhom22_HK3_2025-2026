@@ -33,6 +33,26 @@ with app.app_context():
 
 @app.route('/save-result', methods=['POST'])
 def save_result():
+<<<<<<< HEAD
+=======
+    """API nhận kết quả phân loại từ AI_Service kèm lưu tên ảnh thô vào request"""
+    data = request.get_json()
+    if not data or 'label' not in data or 'confidence' not in data:
+        return jsonify({"status": "error", "message": "Thiếu thông tin dữ liệu."}), 400
+
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Tạo tên file ảnh ngẫu nhiên dựa vào timestamp để không trùng lặp khi tải ảnh lên liên tục
+    filename = f"waste_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+    
+    new_record = WasteHistory(
+        timestamp=now,
+        label=data['label'],
+        confidence=str(data['confidence']),
+        image_path=filename
+    )
+    
+>>>>>>> 658ec50047192b9ba76b1217abf73b7f84a6e84a
     try:
         data = request.get_json()
         if not data or 'label' not in data or 'confidence' not in data:

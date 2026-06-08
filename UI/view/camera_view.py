@@ -23,7 +23,7 @@ class CameraView(ctk.CTkFrame):
         self.switch_view_callback = switch_view_callback
         self.cap = None
         self.is_running = False
-        self.is_camera_active = True # Cờ kiểm soát luồng trực tiếp
+        self.is_camera_active = True 
         
         self._upload_queue = queue.Queue()
         self._result_queue = queue.Queue() 
@@ -49,10 +49,13 @@ class CameraView(ctk.CTkFrame):
         current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
         assets_dir = os.path.join(current_dir, "assets")
 
+        # --- LOAD ICON TỪ FOLDER ASSETS ---
         try:
             img_return = ctk.CTkImage(Image.open(os.path.join(assets_dir, "return.png")), size=(20, 20))
+            self.img_camera = ctk.CTkImage(Image.open(os.path.join(assets_dir, "camera.png")), size=(20, 20))
+            self.img_upload = ctk.CTkImage(Image.open(os.path.join(assets_dir, "upload.png")), size=(20, 20))
         except FileNotFoundError:
-            img_return = None
+            img_return = self.img_camera = self.img_upload = None
 
         self.btn_back = ctk.CTkButton(
             self.top_bar, text=" Quay lại chọn camera", image=img_return, compound="left",
@@ -61,7 +64,6 @@ class CameraView(ctk.CTkFrame):
         )
         self.btn_back.pack(side="left")
 
-        # Khung chứa cố định chống lag
         self.video_container = ctk.CTkFrame(self.cam_frame, fg_color="black", corner_radius=10)
         self.video_container.pack(expand=True, fill="both", padx=10, pady=(10, 0))
         self.video_container.pack_propagate(False)
@@ -72,16 +74,15 @@ class CameraView(ctk.CTkFrame):
         self.btn_frame = ctk.CTkFrame(self.cam_frame, fg_color="transparent")
         self.btn_frame.pack(pady=15)
 
-        # Đổi command thành hàm xử lý nút kép
+        # --- GẮN ICON VÀO NÚT BẤM ---
         self.btn_capture = ctk.CTkButton(
-            self.btn_frame, text="[📷] Chụp Ảnh", command=self._handle_capture_btn, 
+            self.btn_frame, text=" Chụp Ảnh", image=self.img_camera, compound="left", command=self._handle_capture_btn, 
             fg_color="#00b050", hover_color="#008f40", height=40, width=150
         )
         self.btn_capture.pack(side="left", padx=10)
 
-        # Gắn hàm xử lý tải ảnh lên
         self.btn_upload = ctk.CTkButton(
-            self.btn_frame, text="[↑] Tải Ảnh Lên", command=self._upload_image_from_file,
+            self.btn_frame, text=" Tải Ảnh Lên", image=self.img_upload, compound="left", command=self._upload_image_from_file,
             fg_color="#0d6efd", hover_color="#0b5ed7", height=40, width=150
         )
         self.btn_upload.pack(side="left", padx=10)
@@ -135,8 +136,6 @@ class CameraView(ctk.CTkFrame):
         self._update_frame()
 
     def _camera_reader_thread(self):
-        # --- FIX LỖI COLD START (ĐEN MÀN HÌNH) ---
-        # Đọc nháp (bỏ qua) 5 khung hình đầu tiên để Camera khởi động và chỉnh sáng
         for _ in range(5):
             if self.cap.isOpened():
                 self.cap.read()
@@ -153,14 +152,12 @@ class CameraView(ctk.CTkFrame):
         if not self.is_running:
             return
 
-        # Chỉ liên tục vẽ đè hình nếu camera đang hoạt động
         if self._last_frame is not None and self.is_camera_active:
             self._render_image_to_screen(self._last_frame)
 
         self.after(30, self._update_frame)
 
     def _render_image_to_screen(self, frame):
-        """Hàm dùng chung để vẽ ảnh (từ camera hoặc từ file) lên màn hình."""
         target_width = self.video_container.winfo_width()
         target_height = self.video_container.winfo_height()
 
@@ -172,32 +169,28 @@ class CameraView(ctk.CTkFrame):
             self._current_tk_image = ImageTk.PhotoImage(image=pil_image)
             self.video_label.configure(image=self._current_tk_image, text="")
 
-    # --- CÁC HÀM XỬ LÝ NÚT BẤM CHỤP & TẢI ẢNH LÊN ---
     def _handle_capture_btn(self):
         if self.is_camera_active:
-            # Đang ở chế độ Camera -> Thực hiện Chụp ảnh
             if self._last_frame is None:
                 self.result_label.configure(text="Không có khung ảnh để chụp.", text_color="red")
                 return
             self._send_frame_to_ai(self._last_frame)
         else:
-            # Đang ở chế độ Xem ảnh tĩnh -> Bật lại Camera
             self.is_camera_active = True
-            self.btn_capture.configure(text="[📷] Chụp Ảnh", fg_color="#00b050", hover_color="#008f40", text_color="white")
+            # Update lại chữ khi bật lại cam, giữ nguyên icon camera
+            self.btn_capture.configure(text=" Chụp Ảnh", fg_color="#00b050", hover_color="#008f40", text_color="white")
             self.result_label.configure(text="[📷]\nCamera đã được bật lại", text_color="#829ab1")
 
     def _upload_image_from_file(self):
-        """Xử lý mở hộp thoại và tải ảnh rác từ máy tính."""
         file_path = filedialog.askopenfilename(
             title="Chọn ảnh rác thải",
             filetypes=[("Image files", "*.jpg *.jpeg *.png")]
         )
         
         if file_path:
-            # Đóng băng Camera trực tiếp
             self.is_camera_active = False
-            
-            self.btn_capture.configure(text="[▶] Bật lại Camera", fg_color="#ffc107", hover_color="#e0a800", text_color="black")
+            # Bỏ icon mũi tên cũ đi
+            self.btn_capture.configure(text=" Bật lại Camera", fg_color="#ffc107", hover_color="#e0a800", text_color="black")
             
             try:
                 stream = open(file_path, "rb")
@@ -216,7 +209,6 @@ class CameraView(ctk.CTkFrame):
                 self.result_label.configure(text=f"Lỗi hệ thống: {e}", text_color="red")
 
     def _send_frame_to_ai(self, frame):
-        """Hàm dùng chung để nén và đẩy ảnh gốc chất lượng cao vào hàng đợi AI."""
         if image_processor:
             try:
                 img_bytes = image_processor.convert_frame_to_bytes(frame)
@@ -227,7 +219,6 @@ class CameraView(ctk.CTkFrame):
         else:
              self.result_label.configure(text="Đã lưu ảnh! (Chưa kết nối module xử lý API)", text_color="orange")
 
-    # --- KHỐI XỬ LÝ LUỒNG NGẦM GỬI API AN TOÀN ---
     def _start_uploader(self):
         threading.Thread(target=self._uploader_worker, daemon=True).start()
         self._poll_results()

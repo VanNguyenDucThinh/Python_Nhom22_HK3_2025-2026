@@ -1,7 +1,7 @@
 # Backend/backend_service.py
 import datetime
 import os
-from flask import Flask, request, jsonify, render_template_string, send_from_directory
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
@@ -33,20 +33,16 @@ with app.app_context():
 
 @app.route('/save-result', methods=['POST'])
 def save_result():
-    """API nhận kết quả phân loại từ AI_Service kèm lưu ảnh thô từ request nếu có"""
+    """API nhận kết quả phân loại từ AI_Service kèm lưu tên ảnh thô vào request"""
     data = request.get_json()
     if not data or 'label' not in data or 'confidence' not in data:
         return jsonify({"status": "error", "message": "Thiếu thông tin dữ liệu."}), 400
 
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # Tạo tên file ảnh ngẫu nhiên dựa vào timestamp để không trùng lặp
+    # Tạo tên file ảnh ngẫu nhiên dựa vào timestamp để không trùng lặp khi tải ảnh lên liên tục
     filename = f"waste_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-    full_img_path = os.path.join(UPLOAD_FOLDER, filename)
     
-    # (Tùy chọn nâng cao) Nếu luồng bytes được gửi kèm từ AI service hoặc gửi riêng, 
-    # trong đồ án này để đơn giản ta tạo file ảnh giả lập hoặc lấy luồng camera lưu lại.
-    # Để đơn giản hóa luồng, ta lưu tên file ảnh vào DB trước:
     new_record = WasteHistory(
         timestamp=now,
         label=data['label'],
@@ -101,7 +97,6 @@ def delete_record(record_id):
         if not record:
             return jsonify({"status": "error", "message": "Không tìm thấy bản ghi này!"}), 404
         
-        # Xóa file ảnh vật lý trong folder tương ứng để tránh rác ổ cứng
         if record.image_path:
             target_file = os.path.join(UPLOAD_FOLDER, record.image_path)
             if os.path.exists(target_file):

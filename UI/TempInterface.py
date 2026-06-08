@@ -4,14 +4,9 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
 
-# 1. Lấy đường dẫn tuyệt đối của file TempInterface.py đang chạy
 current_file_path = os.path.abspath(__file__)
-
-# 2. Tìm thư mục gốc của đồ án (Python_Nhom22_HK3_2025-2026)
-# Nhảy 1 lần dirname ra folder UI -> Nhảy thêm 1 lần dirname nữa để ra thư mục gốc
 PROJECT_ROOT = os.path.dirname(os.path.dirname(current_file_path))
 
-# 3. Thêm thư mục gốc vào danh sách tìm kiếm của hệ thống
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
@@ -19,7 +14,6 @@ import cv2
 import customtkinter as ctk
 import requests
 from PIL import Image, ImageTk
-# Đi từ thư mục gốc vào CameraService để lấy module
 from CameraService.image_processor import resize_image, convert_frame_to_bytes
 from CameraService.api_client import upload_waste_image
 
@@ -31,7 +25,6 @@ class WasteApp(ctk.CTk):
         super().__init__()
 
         self.title("HỆ THỐNG PHÂN LOẠI RÁC THẢI - TÍCH HỢP XEM ẢNH")
-        self.geometry("1050://700")
         self.geometry("1050x700")
         self.resizable(False, False)
 
@@ -74,7 +67,6 @@ class WasteApp(ctk.CTk):
         history_title = ctk.CTkLabel(history_bar, text="📋 Danh Sách Phân Tích Lịch Sử", font=ctk.CTkFont(size=16, weight="bold"))
         history_title.pack(side="left")
 
-        # THÊM NÚT XEM CHI TIẾT ẢNH
         btn_detail = ctk.CTkButton(history_bar, text="🔎 Xem Chi Tiết & Ảnh", command=self.open_detail_window, fg_color="#3498db", hover_color="#2980b9", font=ctk.CTkFont(size=12, weight="bold"))
         btn_detail.pack(side="right", padx=10)
 
@@ -139,9 +131,6 @@ class WasteApp(ctk.CTk):
                 self.lbl_dochai_val.configure(text=f"{c_dochai} Lượt")
         except: pass
 
-    # =========================================================================
-    # LOGIC MỞ POPUP HIỂN THỊ CHI TIẾT KÈM ẢNH ĐÃ CHỤP TRONG DB
-    # =========================================================================
     def open_detail_window(self):
         selected_item = self.tree.selection()
         if not selected_item:
@@ -152,19 +141,16 @@ class WasteApp(ctk.CTk):
         record_id = row_values[0].replace("#", "")
 
         try:
-            # Gọi API lấy chi tiết thông tin từ Backend
             resp = requests.get(f"http://127.0.0.1:5000/api/record/{record_id}", timeout=3)
             if resp.status_code == 200:
                 data = resp.json()
                 
-                # Khởi tạo cửa sổ Popup mới đè lên UI chính
                 detail_win = ctk.CTkToplevel(self)
                 detail_win.title(f"CHI TIẾT BẢN GHI {row_values[0]}")
                 detail_win.geometry("500x550")
                 detail_win.resizable(False, False)
-                detail_win.attributes("-topmost", True) # Giữ cửa sổ luôn ở trên cùng
+                detail_win.attributes("-topmost", True)
 
-                # Hiển thị thông tin chữ
                 info_text = f"🆔 Mã bản ghi: #{data.get('id')}\n\n" \
                             f"⏰ Thời gian quét: {data.get('timestamp')}\n\n" \
                             f"🏷️ Kết quả AI: {data.get('label').upper()}\n\n" \
@@ -173,9 +159,7 @@ class WasteApp(ctk.CTk):
                 lbl_info = ctk.CTkLabel(detail_win, text=info_text, justify="left", font=ctk.CTkFont(size=13))
                 lbl_info.pack(pady=15, padx=20, anchor="w")
 
-                # Tìm và hiển thị hình ảnh
                 img_name = data.get("image_path")
-                # Tự động tìm thư mục gốc dựa theo vị trí file giao diện đang chạy
                 UI_DIR = os.path.dirname(os.path.abspath(__file__))
                 ROOT_DIR = os.path.dirname(UI_DIR)
                 img_full_path = os.path.join(ROOT_DIR, "Backend", "saved_images", img_name) if img_name else ""
@@ -184,7 +168,6 @@ class WasteApp(ctk.CTk):
                 img_label.pack(pady=10)
 
                 if img_name and os.path.exists(img_full_path):
-                    # Đọc và thay đổi kích thước ảnh hiển thị cho vừa vặn cửa sổ popup
                     pil_img = Image.open(img_full_path).resize((400, 300))
                     tk_img = ImageTk.PhotoImage(image=pil_img)
                     img_label.configure(image=tk_img)
@@ -212,7 +195,7 @@ class WasteApp(ctk.CTk):
             except: pass
 
     # =========================================================================
-    # GIAO DIỆN MÀN HÌNH CAMERA & XỬ LÝ LƯU ẢNH VẬT LÝ KHI QUÉT SUCCEED
+    # GIAO DIỆN MÀN HÌNH CAMERA & NÚT UPLOAD ẢNH TỪ MÁY TÍNH
     # =========================================================================
     def build_camera_screen(self):
         workspace = ctk.CTkFrame(self.camera_frame, fg_color="transparent")
@@ -228,13 +211,17 @@ class WasteApp(ctk.CTk):
         result_panel.pack(side="right", fill="y")
 
         self.res_label_val = ctk.CTkLabel(result_panel, text="Chờ quét...", font=ctk.CTkFont(size=20, weight="bold"), text_color="yellow")
-        self.res_label_val.pack(pady=30)
+        self.res_label_val.pack(pady=20)
 
-        self.btn_toggle_cam = ctk.CTkButton(result_panel, text="🎥 Bật Camera", command=self.toggle_camera)
+        self.btn_toggle_cam = ctk.CTkButton(result_panel, text="🎥 Bật Camera", command=self.toggle_camera, fg_color="#1abc9c")
         self.btn_toggle_cam.pack(pady=5, fill="x", padx=20)
 
         self.btn_capture_ai = ctk.CTkButton(result_panel, text="🎯 Chụp & Phân Tích", command=self.trigger_ai_detection, state="disabled")
         self.btn_capture_ai.pack(pady=5, fill="x", padx=20)
+        
+        # NÚT MỚI: TẢI ẢNH LÊN TỪ MÁY
+        self.btn_upload_ai = ctk.CTkButton(result_panel, text="📁 Tải Ảnh Lên & Phân Tích", command=self.upload_image_file, fg_color="#34495e", hover_color="#2c3e50")
+        self.btn_upload_ai.pack(pady=5, fill="x", padx=20)
         
         btn_back = ctk.CTkButton(result_panel, text="📊 Quay lại Dashboard", command=self.show_dashboard, fg_color="#7f8c8d")
         btn_back.pack(pady=20, fill="x", padx=20)
@@ -284,8 +271,30 @@ class WasteApp(ctk.CTk):
             self.res_label_val.configure(text="AI đang xử lý...")
             threading.Thread(target=self._run_api_process, args=(self.current_frame,), daemon=True).start()
 
+    # HÀM MỞ HỘP THOẠI CHỌN FILE ẢNH
+    def upload_image_file(self):
+        file_path = filedialog.askopenfilename(
+            title="Chọn ảnh rác thải cần phân tích",
+            filetypes=[("Image Files", "*.jpg *.jpeg *.png *.bmp *.webp")]
+        )
+        if not file_path:
+            return
+
+        uploaded_frame = cv2.imread(file_path)
+        if uploaded_frame is None:
+            messagebox.showerror("Lỗi", "Không thể đọc tệp tin hình ảnh này.")
+            return
+
+        # Dừng luồng stream camera để chuẩn bị hiển thị ảnh vừa upload lên màn hình xem trước
+        self.stop_camera_stream()
+        
+        self.res_label_val.configure(text="AI đang xử lý ảnh tải lên...")
+        threading.Thread(target=self._run_api_process, args=(uploaded_frame,), daemon=True).start()
+
+    # ĐÃ CẬP NHẬT: LUỒNG XỬ LÝ VẼ KHUNG (BOUNDING BOX) KHI AI PHẢN HỒI TOẠ ĐỘ
     def _run_api_process(self, frame):
         try:
+            # Gửi ảnh thô nguyên bản đi phân tích
             anh_sach = resize_image(frame)
             du_lieu_bytes = convert_frame_to_bytes(anh_sach)
             ket_qua = upload_waste_image(du_lieu_bytes)
@@ -293,24 +302,41 @@ class WasteApp(ctk.CTk):
             if isinstance(ket_qua, dict) and ket_qua.get("status") == "success":
                 label = ket_qua.get("label", "Không rõ")
                 conf = ket_qua.get("confidence", "0.00%")
-                self.res_label_val.configure(text=f"{label}\n{conf}", text_color="green")
+                box = ket_qua.get("box", []) # Lấy mảng [x1, y1, x2, y2]
                 
-                # KHI AI TRẢ VỀ THÀNH CÔNG -> ĐỒNG BỘ LƯU ẢNH VẬT LÝ VÀO THƯ MỤC CỦA BACKEND
-                # Để lấy đúng tên ảnh vừa sinh từ Backend, ta gọi load lại danh sách để đồng bộ tên ảnh
+                # Copy ra 1 bản để vẽ khung hiển thị và lưu (Không làm hỏng frame gốc)
+                frame_with_box = frame.copy()
+                
+                # Nếu AI tìm thấy vật thể và trả ra tọa độ, dùng OpenCV vẽ trực tiếp lên ảnh
+                if box and len(box) == 4:
+                    x1, y1, x2, y2 = box
+                    # 1. Vẽ hình chữ nhật màu xanh lá cây rực rỡ, độ dày nét vẽ là 3
+                    cv2.rectangle(frame_with_box, (x1, y1), (x2, y2), (0, 255, 0), 3)
+
+                # Hiển thị bức ảnh ĐÃ CÓ KHUNG lên màn hình chính cho người dùng xem
+                self.res_label_val.configure(text=f"{label}\n{conf}", text_color="red")
+                cv2_img = cv2.cvtColor(frame_with_box, cv2.COLOR_BGR2RGB)
+                pil_img = Image.fromarray(cv2_img).resize((600, 450))
+                tk_img = ImageTk.PhotoImage(image=pil_img)
+                self.cam_label.configure(image=tk_img, text="")
+                self.cam_label.image = tk_img
+                
+                # Đồng bộ lưu ảnh ĐÃ VẼ KHUNG vào thư mục Backend/saved_images để phục vụ xem lịch sử
                 response = requests.get("http://127.0.0.1:5000/api/records", timeout=2)
                 if response.status_code == 200 and len(response.json()) > 0:
-                    latest_record = response.json()[0] # Lấy dòng mới nhất vừa lưu
+                    latest_record = response.json()[0]
                     img_name = latest_record.get("image_path")
                     
-                    # Tiến hành ghi file ảnh vật lý ra ổ đĩa của server
-                    # Tự động tìm thư mục gốc dựa theo vị trí file giao diện đang chạy
                     UI_DIR = os.path.dirname(os.path.abspath(__file__))
                     ROOT_DIR = os.path.dirname(UI_DIR)
                     backend_img_dir = os.path.join(ROOT_DIR, "Backend", "saved_images")
-                    cv2.imwrite(os.path.join(backend_img_dir, img_name), frame)
+                    
+                    # Lưu bức ảnh đã vẽ khung xuống ổ cứng
+                    cv2.imwrite(os.path.join(backend_img_dir, img_name), frame_with_box)
             else:
                 self.res_label_val.configure(text="Lỗi kết nối AI!", text_color="red")
-        except:
+        except Exception as e:
+            print(e)
             self.res_label_val.configure(text="Lỗi hệ thống!", text_color="red")
 
 if __name__ == "__main__":

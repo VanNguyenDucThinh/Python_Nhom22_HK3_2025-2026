@@ -3,17 +3,18 @@ import os
 from PIL import Image
 import customtkinter as ctk
 
-# Thêm đường dẫn gốc để gọi chéo thư mục
+# Them duong dan goc de goi cheo thu muc
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 if root_dir not in sys.path:
-    sys.path.append(root_dir)
+    sys.path.insert(0, root_dir)
 
 from view.select_cam_view import SelectCamView
 from view.camera_view import CameraView
 
 ctk.set_appearance_mode("light") 
 ctk.set_default_color_theme("green")
+
 
 class MainApp(ctk.CTk):
     def __init__(self):

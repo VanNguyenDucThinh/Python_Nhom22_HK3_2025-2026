@@ -2,6 +2,7 @@ import sys
 import os
 from PIL import Image
 import customtkinter as ctk
+from data_frame import DataFrameView
 
 # Them duong dan goc de goi cheo thu muc
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -57,7 +58,7 @@ class MainApp(ctk.CTk):
 
         self.btn_dashboard = ctk.CTkButton(
             self.header_frame, text=" Dữ Liệu", image=img_data, compound="left",
-            command=self.show_dashboard_view,
+            command=self.show_data_frame_view,
             fg_color="#f1f3f5", text_color="#212529", hover_color="#e2e6ea", width=120, height=35
         )
         self.btn_dashboard.pack(side="right", padx=(15, 0))
@@ -72,6 +73,13 @@ class MainApp(ctk.CTk):
         self.separator = ctk.CTkFrame(self, height=1, fg_color="#dee2e6")
         self.separator.grid(row=1, column=0, sticky="ew")
 
+        self.btn_history = ctk.CTkButton(
+            self.header_frame, 
+            text=" Lịch sử", 
+            command=lambda: self.switch_view("data_frame") # Gọi hàm chuyển màn hình
+        )
+        self.btn_history.pack(side="right", padx=10)
+
     def clear_main_frame(self):
         for widget in self.main_frame.winfo_children():
             widget.destroy()
@@ -81,6 +89,8 @@ class MainApp(ctk.CTk):
             self.show_camera_view(kwargs.get("selected_cam_id"))
         elif target_view == "select_cam":
             self.show_select_cam_view()
+        elif target_view == "data_frame":
+            self.show_data_frame_view()
 
     def show_select_cam_view(self):
         self.clear_main_frame()
@@ -96,6 +106,13 @@ class MainApp(ctk.CTk):
         self.clear_main_frame()
         label = ctk.CTkLabel(self.main_frame, text="[Dashboard View]", font=("Arial", 20))
         label.pack(expand=True)
+    
+    def show_data_frame_view(self):
+        self.clear_main_frame()
+        # Tùy thuộc vào thiết kế của DataFrameView có yêu cầu tham số nào không
+        # Theo code của bạn, nó nhận parent (self.main_frame)
+        view = DataFrameView(self.main_frame)
+        view.pack(fill="both", expand=True)
 
 if __name__ == "__main__":
     app = MainApp()

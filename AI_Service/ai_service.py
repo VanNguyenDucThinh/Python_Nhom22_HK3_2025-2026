@@ -61,11 +61,16 @@ def predict():
 
         # Gửi kết quả sang Backend lưu Database nếu nhận diện thành công
         if label != "Không nhận diện được":
-            result_data = {"label": label, "confidence": conf_str}
-            try:
-                requests.post(BACKEND_URL, json=result_data, timeout=3)
-            except Exception:
-                print("[CẢNH BÁO] Không kết nối được Backend để lưu lịch sử.")
+            # Đặt tên file ảnh mong muốn lưu trữ
+            import time
+            img_filename = f"history_{int(time.time())}.jpg" 
+
+            result_data = {
+                "label": label, 
+                "confidence": conf_str,
+                "image_path": img_filename # <-- ĐẨY TÊN FILE SANG BACKEND ĐỂ GHI VÀO CỘT THỨ 5
+            }
+            requests.post(BACKEND_URL, json=result_data, timeout=3)
 
         # Trả về kết quả đầy đủ cấu trúc gồm cả nhãn, độ tin cậy và tọa độ box
         return jsonify({

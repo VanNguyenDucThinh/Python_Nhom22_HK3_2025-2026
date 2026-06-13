@@ -66,9 +66,8 @@ class DataFrameView(ctk.CTkFrame):
         self.lbl_hist_title = ctk.CTkLabel(self.header_hist, text="Lịch Sử Phân Tích (0)", font=("Arial", 22, "bold"), text_color="black")
         self.lbl_hist_title.pack(side="left")
         
-        # Nút bấm đã được tối ưu màu sắc tương phản cao, rõ chữ và rõ icon
         ctk.CTkButton(self.header_hist, text=" Xóa Tất Cả", image=self.icon_delete, compound="left", width=130, height=38, fg_color="#ff4d6d", hover_color="#ff1a43", text_color="white", font=("Arial", 14, "bold"), corner_radius=8, command=self.clear_all_data).pack(side="right", padx=5)
-        ctk.CTkButton(self.header_hist, text=" Xuất", image=self.icon_export, compound="left", width=100, height=38, fg_color="#4cc9f0", hover_color="#4361ee", text_color="white", font=("Arial", 14, "bold"), corner_radius=8,command=self.export_to_csv).pack(side="right", padx=5)
+        ctk.CTkButton(self.header_hist, text=" Xuất", image=self.icon_export, compound="left", width=100, height=38, fg_color="#4cc9f0", hover_color="#4361ee", text_color="white", font=("Arial", 14, "bold"), corner_radius=8, command=self.export_to_csv).pack(side="right", padx=5)
         
         ctk.CTkFrame(self.history_frame, height=2, fg_color="#eaedf0").pack(fill="x", padx=22, pady=(5, 10))
         
@@ -76,7 +75,6 @@ class DataFrameView(ctk.CTkFrame):
         self.hist_content_area = ctk.CTkFrame(self.history_frame, fg_color="transparent")
         self.hist_content_area.pack(fill="both", expand=True)
 
-        # Cấu hình sẵn khung chứa bảng dữ liệu
         self.table_frame = ctk.CTkFrame(self.hist_content_area, fg_color="transparent")
         
         style = ttk.Style()
@@ -84,7 +82,6 @@ class DataFrameView(ctk.CTkFrame):
         style.configure("Treeview", rowheight=35, font=("Arial", 13), background="white", fieldbackground="white")
         style.configure("Treeview.Heading", font=("Arial", 14, "bold"), background="#f0f2f5", foreground="black")
         
-        # Đã sửa lỗi khai báo chính xác self.table_frame
         self.tree = ttk.Treeview(self.table_frame, columns=("STT", "Thời Gian", "Loại Rác", "Độ Tin Cậy"), show="headings")
         self.tree.heading("STT", text="STT")
         self.tree.heading("Thời Gian", text="Thời Gian")
@@ -113,8 +110,9 @@ class DataFrameView(ctk.CTkFrame):
         ctk.CTkLabel(self.header_det, text="Chi Tiết", font=("Arial", 22, "bold"), text_color="black").pack(side="left")
         ctk.CTkFrame(self.detail_frame, height=2, fg_color="#eaedf0").pack(fill="x", padx=22, pady=(5, 10))
         
-        self.detail_content_area = ctk.CTkFrame(self.detail_frame, fg_color="transparent")
-        self.detail_content_area.pack(fill="both", expand=True)
+        # 🔥 ĐÃ ĐỔI THÀNH CTkScrollableFrame: Thêm thanh cuộn tự động khi thu nhỏ màn hình
+        self.detail_content_area = ctk.CTkScrollableFrame(self.detail_frame, fg_color="transparent", label_text="")
+        self.detail_content_area.pack(fill="both", expand=True, padx=5, pady=(0, 10))
         
         self.show_empty_detail_state()
 
@@ -137,7 +135,7 @@ class DataFrameView(ctk.CTkFrame):
         for widget in self.detail_content_area.winfo_children():
             widget.destroy()
         empty_det_center = ctk.CTkFrame(self.detail_content_area, fg_color="transparent")
-        empty_det_center.pack(expand=True)
+        empty_det_center.pack(expand=True, pady=100) # Thêm khoảng đệm giữa để icon căn giữa khung cuộn
         if self.img_empty_det:
             ctk.CTkLabel(empty_det_center, text="", image=self.img_empty_det).pack(pady=(0, 15))
         ctk.CTkLabel(empty_det_center, text="Chọn một mục để xem chi tiết", text_color="#a0a5aa", font=("Arial", 17, "bold")).pack()
@@ -157,8 +155,13 @@ class DataFrameView(ctk.CTkFrame):
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Đọc dữ liệu chuẩn theo cấu hình cột thật của nhóm
-            cursor.execute("SELECT timestamp, label, confidence FROM waste_history ORDER BY id DESC")
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='waste_history'")
+            if not cursor.fetchone():
+                self.show_empty_history_state()
+                conn.close()
+                return
+
+            cursor.execute("SELECT timestamp, label, confidence, image_path FROM waste_history ORDER BY id DESC")
             rows = cursor.fetchall()
             
             if len(rows) == 0:
@@ -171,9 +174,8 @@ class DataFrameView(ctk.CTkFrame):
                 self.table_frame.pack(fill="both", expand=True, padx=22, pady=10)
                 
                 for stt, row in enumerate(rows, start=1):
-                    timestamp, label, confidence = row
+                    timestamp, label, confidence, image_path = row
                     
-                    # Chuẩn hóa hiển thị số phần trăm độ tin cậy (.1f là làm tròn 1 chữ số thập phân)
                     try:
                         conf_val = float(confidence)
                         if conf_val <= 1.0:
@@ -183,11 +185,10 @@ class DataFrameView(ctk.CTkFrame):
                     except ValueError:
                         conf_str = str(confidence)
                         
-                    self.tree.insert("", "end", values=(stt, timestamp, label, conf_str))
+                    self.tree.insert("", "end", values=(stt, timestamp, label, conf_str, image_path))
             
             self.lbl_hist_title.configure(text=f"Lịch Sử Phân Tích ({len(rows)})")
             
-            # Đếm tổng số lượng cho 4 thẻ màu theo đúng từ khóa tiếng Việt nhóm đang lưu trong db
             db_keywords = ["Rác hữu cơ", "Rác vô cơ", "Rác tái chế", "Rác độc hại"]
             ui_titles = ["Hữu Cơ", "Vô Cơ", "Tái Chế", "Độc Hại"]
             
@@ -198,42 +199,109 @@ class DataFrameView(ctk.CTkFrame):
                 
             conn.close()
         except Exception as e:
-            print(f"Lỗi truy vấn cơ sở dữ liệu thật: {e}")
+            print(f"Lỗi truy vấn cơ sở dữ liệu: {e}")
             self.show_empty_history_state()
 
-    # Hiển thị thông tin chi tiết thật của dòng được click sang cột phải
+    # ==========================================
+    # 🖼️ HIỂN THỊ CHI TIẾT KÈM ẢNH PHÓNG TO & CUỘN TRANG
+    # ==========================================
     def on_row_selected(self, event):
         selected_item = self.tree.selection()
         if not selected_item: return
             
         item_data = self.tree.item(selected_item[0])["values"]
-        _, timestamp, label, conf_str = item_data
+        _, timestamp, label, conf_str, image_path = item_data
         
         for widget in self.detail_content_area.winfo_children():
             widget.destroy()
             
         info_box = ctk.CTkFrame(self.detail_content_area, fg_color="transparent")
-        info_box.pack(fill="both", expand=True, padx=25, pady=20)
+        info_box.pack(fill="both", expand=True, padx=15, pady=10)
         
-        ctk.CTkLabel(info_box, text="THÔNG TIN PHÂN TÍCH", font=("Arial", 18, "bold"), text_color="#00a843").pack(anchor="w", pady=(0, 15))
+        label_color_map = {
+            "Rác hữu cơ": "#00a843",
+            "Rác vô cơ": "#1b66ff",
+            "Rác tái chế": "#dca100",
+            "Rác độc hại": "#e61224"
+        }
+        current_text_color = label_color_map.get(label, "#1b66ff")
+        
+        # Phần hiển thị thông tin dạng chữ
+        ctk.CTkLabel(info_box, text="THÔNG TIN PHÂN TÍCH", font=("Arial", 18, "bold"), text_color=current_text_color).pack(anchor="w", pady=(0, 15))
         ctk.CTkLabel(info_box, text=f"• Thời gian quét:", font=("Arial", 15, "bold"), text_color="black").pack(anchor="w", pady=2)
         ctk.CTkLabel(info_box, text=f"  {timestamp}", font=("Arial", 15), text_color="gray").pack(anchor="w", pady=(0, 10))
         ctk.CTkLabel(info_box, text=f"• Kết quả phân loại:", font=("Arial", 15, "bold"), text_color="black").pack(anchor="w", pady=2)
-        ctk.CTkLabel(info_box, text=f"  {label}", font=("Arial", 16, "bold"), text_color="#1b66ff").pack(anchor="w", pady=(0, 10))
+        ctk.CTkLabel(info_box, text=f"  {label}", font=("Arial", 16, "bold"), text_color=current_text_color).pack(anchor="w", pady=(0, 10))
         ctk.CTkLabel(info_box, text=f"• Độ tin cậy thuật toán:", font=("Arial", 15, "bold"), text_color="black").pack(anchor="w", pady=2)
-        ctk.CTkLabel(info_box, text=f"  {conf_str}", font=("Arial", 15), text_color="gray").pack(anchor="w")
+        ctk.CTkLabel(info_box, text=f"  {conf_str}", font=("Arial", 15), text_color="gray").pack(anchor="w", pady=(0, 15))
+        
+        ctk.CTkLabel(info_box, text="• Hình ảnh minh họa:", font=("Arial", 15, "bold"), text_color="black").pack(anchor="w", pady=(0, 5))
+        
+        # 🔥 ĐÃ TĂNG CHIỀU CAO KHUNG CHỨA (từ 240 lên 310) để chứa ảnh lớn phóng to vừa vặn
+        img_container = ctk.CTkFrame(info_box, fg_color="#f1f3f5", border_color="#eaedf0", border_width=1, corner_radius=10, height=310)
+        img_container.pack(fill="x", pady=5)
+        img_container.pack_propagate(False)
+        
+        backend_dir = os.path.dirname(self.db_path)
+        
+        if image_path:
+            clean_path = str(image_path).replace('/', os.sep).replace('\\', os.sep)
+            full_img_path = os.path.normpath(os.path.join(backend_dir, clean_path))
+        else:
+            full_img_path = ""
+        
+        if full_img_path and os.path.exists(full_img_path):
+            try:
+                pil_img = Image.open(full_img_path)
+                
+                # 🔥 ĐÃ PHÓNG TO HÌNH ẢNH: Tăng giới hạn từ (280, 200) lên (380, 280)
+                max_w, max_h = 380, 280  
+                orig_w, orig_h = pil_img.size
+                
+                ratio = min(max_w / orig_w, max_h / orig_h)
+                new_w = int(orig_w * ratio)
+                new_h = int(orig_h * ratio)
+                
+                ctk_waste_img = ctk.CTkImage(light_image=pil_img, size=(new_w, new_h))
+                
+                lbl_img = ctk.CTkLabel(img_container, text="", image=ctk_waste_img)
+                lbl_img.image = ctk_waste_img  
+                lbl_img.pack(expand=True)
+            except Exception as e:
+                ctk.CTkLabel(img_container, text=f"Lỗi đọc tập tin ảnh:\n{e}", text_color="red", font=("Arial", 13)).pack(expand=True)
+        else:
+            ctk.CTkLabel(img_container, text="⚠️ Không tìm thấy file ảnh\n(Đã bị xóa hoặc chưa lưu)", text_color="#a0a5aa", font=("Arial", 13, "italic")).pack(expand=True)
 
-    # Xử lý xóa toàn bộ dữ liệu trong bảng của nhóm
     def clear_all_data(self):
         if not os.path.exists(self.db_path): return
+        
+        from tkinter import messagebox
+        if not messagebox.askyesno("Xác nhận", "Bạn có chắc chắn muốn xóa TOÀN BỘ dữ liệu lịch sử và ảnh phân tích không?"):
+            return
+
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
+            
+            cursor.execute("SELECT image_path FROM waste_history")
+            images_to_delete = cursor.fetchall()
+            
+            backend_dir = os.path.dirname(self.db_path)
+            for img_row in images_to_delete:
+                if img_row[0]:
+                    clean_path = str(img_row[0]).replace('/', os.sep).replace('\\', os.sep)
+                    full_p = os.path.join(backend_dir, clean_path)
+                    if os.path.exists(full_p):
+                        try: os.remove(full_p)
+                        except: pass
+
             cursor.execute("DELETE FROM waste_history")
             conn.commit()
             conn.close()
+            
             self.load_data_from_database()
             self.show_empty_detail_state()
+            messagebox.showinfo("Thành công", "Đã dọn dẹp sạch sẽ cơ sở dữ liệu và thư mục hình ảnh!")
         except Exception as e:
             print(f"Lỗi khi xóa bảng dữ liệu: {e}")
     
@@ -244,7 +312,6 @@ class DataFrameView(ctk.CTkFrame):
         from tkinter import filedialog, messagebox
         
         try:
-            # 1. Đọc toàn bộ dữ liệu từ database của nhóm ra
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             cursor.execute("SELECT id, timestamp, label, confidence FROM waste_history ORDER BY id ASC")
@@ -255,7 +322,6 @@ class DataFrameView(ctk.CTkFrame):
                 messagebox.showwarning("Thông báo", "Hiện tại chưa có dữ liệu nào để xuất file!")
                 return
                 
-            # 2. Hiện hộp thoại hỏi người dùng muốn lưu file Excel/CSV ở thư mục nào trong máy
             file_path = filedialog.asksaveasfilename(
                 defaultextension=".csv",
                 filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
@@ -263,16 +329,12 @@ class DataFrameView(ctk.CTkFrame):
                 initialfile="Bao_Cao_Lich_Su_Phan_Loai_Rac.csv"
             )
             
-            if not file_path: return # Người dùng bấm Cancel, không lưu nữa
+            if not file_path: return 
             
-            # 3. Tiến hành ghi dữ liệu vào file (Cấu hình mã hóa utf-8-sig để Excel đọc được tiếng Việt)
             with open(file_path, mode="w", encoding="utf-8-sig", newline="") as file:
                 writer = csv.writer(file)
-                # Ghi dòng tiêu đề cột
                 writer.writerow(["STT", "Thời Gian Quét", "Loại Rác Phát Hiện", "Độ Tin Cậy"])
-                # Ghi toàn bộ các dòng dữ liệu
                 for row in rows:
-                    # Chuẩn hóa hiển thị % giống trên bảng
                     try:
                         conf_val = float(row[3])
                         conf_str = f"{conf_val * 100:.1f}%" if conf_val <= 1.0 else f"{conf_val:.1f}%"

@@ -101,6 +101,15 @@ class CameraView(ctk.CTkFrame):
         ctk.CTkLabel(self.result_frame, text="Kết Quả Phân Tích", font=ctk.CTkFont(size=16, weight="bold"), text_color="#102a43").pack(pady=15, anchor="w", padx=20)
         self.result_label = ctk.CTkLabel(self.result_frame, text="[📷]\nChụp hoặc tải ảnh lên để phân tích", text_color="#829ab1", justify="center")
         self.result_label.pack(pady=(20, 50))
+        # --- Thêm mới nút tải lại ---
+        self.btn_retry = ctk.CTkButton(
+            self.result_frame,
+            text="Thử Lại",
+            command=self._retry_analysis,
+            fg_color="#6c757d", hover_color="#5a6268", 
+            height=30, width=120, corner_radius=8
+        )
+        # -----------------------------------
 
         self.guide_frame = ctk.CTkFrame(self.right_frame, fg_color="#f0fdf4", border_width=1, border_color="#d1e7dd", corner_radius=10)
         self.guide_frame.pack(fill="both", expand=True)
@@ -284,7 +293,20 @@ class CameraView(ctk.CTkFrame):
         except Exception as e:
             print(f"[LỖI HỆ THỐNG NGẦM]: {e}")
             self.result_label.configure(text="Lỗi hệ thống!", text_color="red")
+        finally:
+            self.btn_retry.pack(pady=(0, 15))
 
+    def _retry_analysis(self):
+        self.btn_retry.pack_forget()
+
+        if self._last_frame is None:
+            self.result_label.configure(text="Chưa có ảnh nào để thử lại!", text_color="red")
+            return
+            
+        self.result_label.configure(text="AI đang xử lý lại...", text_color="#0d6efd")
+        
+        threading.Thread(target=self._run_api_process, args=(self._last_frame.copy(),), daemon=True).start()
+        
     def _go_back(self):
         if self.switch_view_callback:
             self.switch_view_callback(target_view="select_cam")

@@ -80,14 +80,14 @@ class SelectCamView(ctk.CTkFrame):
 
     def _detect_available_cameras(self):
         available_cams = []
-        for i in range(4):
-            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+        for i in range(10):
+            cap = cv2.VideoCapture(i)
             if cap.isOpened():
                 name = "Camera Máy Tính" if i == 0 else f"Camera Rời (Cổng {i})"
                 available_cams.append({"name": name, "id": str(i)})
                 cap.release()
         return available_cams
-
+    
     def _render_camera_options(self, camera_list):
         if not camera_list:
             self.subtitle_label.configure(text="Không tìm thấy camera nào kết nối với máy tính!", text_color="red")

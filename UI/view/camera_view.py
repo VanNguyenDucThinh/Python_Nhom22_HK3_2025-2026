@@ -135,7 +135,7 @@ class CameraView(ctk.CTkFrame):
             ctk.CTkLabel(row, text=f" {desc}", text_color="#495057", font=ctk.CTkFont(size=13)).pack(side="left")
 
     def _start_camera(self):
-        self.cap = cv2.VideoCapture(self.cam_id, cv2.CAP_DSHOW)
+        self.cap = cv2.VideoCapture(self.cam_id)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 

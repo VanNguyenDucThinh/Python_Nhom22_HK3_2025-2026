@@ -68,7 +68,17 @@ class DataFrameView(ctk.CTkFrame):
         
         ctk.CTkButton(self.header_hist, text=" Xóa Tất Cả", image=self.icon_delete, compound="left", width=130, height=38, fg_color="#ff4d6d", hover_color="#ff1a43", text_color="white", font=("Arial", 14, "bold"), corner_radius=8, command=self.clear_all_data).pack(side="right", padx=5)
         ctk.CTkButton(self.header_hist, text=" Xuất", image=self.icon_export, compound="left", width=100, height=38, fg_color="#4cc9f0", hover_color="#4361ee", text_color="white", font=("Arial", 14, "bold"), corner_radius=8, command=self.export_to_csv).pack(side="right", padx=5)
+        self.filter_buttons_frame = ctk.CTkFrame(self.history_frame, fg_color="transparent")
+        self.filter_buttons_frame.pack(fill="x", padx=22, pady=(0, 10))
         
+        self.filter_btns = {}
+        options = ["Tất cả", "Rác hữu cơ", "Rác vô cơ", "Rác tái chế", "Rác độc hại"]
+        for opt in options:
+            btn = ctk.CTkButton(self.filter_buttons_frame, text=opt, width=90, height=30, 
+                                fg_color="#e0e0e0", text_color="black", font=("Arial", 12),
+                                command=lambda o=opt: self.filter_data(o))
+            btn.pack(side="left", padx=5)
+            self.filter_btns[opt] = btn
         ctk.CTkFrame(self.history_frame, height=2, fg_color="#eaedf0").pack(fill="x", padx=22, pady=(5, 10))
         
         # VÙNG CHỨA NỘI DUNG LỊCH SỬ ĐỘNG
@@ -347,3 +357,36 @@ class DataFrameView(ctk.CTkFrame):
             
         except Exception as e:
             messagebox.showerror("Lỗi", f"Không thể xuất file: {e}")
+    def filter_data(self, filter_type):
+        # 1. Đổi màu nút đang chọn (highlight)
+        for name, btn in self.filter_btns.items():
+            if name == filter_type:
+                btn.configure(fg_color="#1b66ff", text_color="white") # Màu xanh dương khi chọn
+            else:
+                btn.configure(fg_color="#e0e0e0", text_color="black") # Màu xám cho nút khác
+
+        # 2. Xóa dữ liệu cũ trong bảng
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+            
+        # 3. Lọc dữ liệu từ DB
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        if filter_type == "Tất cả":
+            cursor.execute("SELECT timestamp, label, confidence, image_path FROM waste_history ORDER BY id DESC")
+        else:
+            cursor.execute("SELECT timestamp, label, confidence, image_path FROM waste_history WHERE label = ? ORDER BY id DESC", (filter_type,))
+        
+        rows = cursor.fetchall()
+        
+        # 4. Hiển thị lại
+        for stt, row in enumerate(rows, start=1):
+            ts, label, conf, img = row
+            try:
+                conf_str = f"{float(conf)*100:.1f}%" if float(conf) <= 1.0 else f"{float(conf):.1f}%"
+            except: conf_str = str(conf)
+            self.tree.insert("", "end", values=(stt, ts, label, conf_str, img))
+            
+        self.lbl_hist_title.configure(text=f"Lịch Sử Phân Tích ({len(rows)})")
+        conn.close()

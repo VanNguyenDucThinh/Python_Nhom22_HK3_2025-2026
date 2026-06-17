@@ -93,11 +93,28 @@ def process_image():
 
         # 3. Tiến hành gửi kết quả và ẢNH THỰC TẾ sang Backend lưu trữ (Nếu nhận diện thành công)
         if label != "Không nhận diện được":
-            result_data = {"label": label, "confidence": conf_str}
+            frame_to_save = frame.copy()
+            if len(box_coords) == 4:
+                # 🔥 ĐÃ SỬA: Chỉ vẽ bounding box với độ dày nét = 3, KHÔNG vẽ chữ lên ảnh
+                cv2.rectangle(frame_to_save, (box_coords[0], box_coords[1]), (box_coords[2], box_coords[3]), box_color, 3)
+            
+            # Chuyển đổi ảnh đã vẽ khung màu thành chuỗi bytes định dạng .jpg
+            _, img_encoded = cv2.imencode('.jpg', frame_to_save)
+            img_bytes = img_encoded.tobytes()
+
+            # Đóng gói Multipart gửi sang Backend
+            files = {
+                'image': ('detected_waste.jpg', img_bytes, 'image/jpeg')
+            }
+            payload = {
+                'label': label,
+                'confidence': conf_str
+            }
+            
             try:
-                requests.post(BACKEND_URL, json=result_data, timeout=3)
-            except Exception:
-                print("[CẢNH BÁO] Không kết nối được Backend để lưu lịch sử.")
+                requests.post(BACKEND_URL, data=payload, files=files, timeout=4)
+            except Exception as e:
+                print(f"[CẢNH BÁO KẾT NỐI] Không gửi ảnh và dữ liệu sang Backend lưu được: {e}")
 
         # 4. Trả kết quả về cho Giao diện hiển thị trực tiếp
         return jsonify({

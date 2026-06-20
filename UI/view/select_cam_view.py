@@ -96,7 +96,7 @@ class SelectCamView(ctk.CTkFrame):
         for cam in camera_list:
             cam_btn = ctk.CTkButton(
                 self.options_frame, 
-                text=f" {cam['name']}\n ID: {cam['id']}", 
+                text=f" {cam['name']}", 
                 image=self.img_cam_small, compound="left",
                 height=60, width=400, corner_radius=10,
                 fg_color="#f8f9fa", text_color="#212529", hover_color="#e9ecef", anchor="w",

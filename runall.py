@@ -24,7 +24,7 @@ process_ai = subprocess.Popen([sys.executable, path_ai])
 time.sleep(3) 
 
 # 3. Bật Giao diện Camera chính
-path_camera = os.path.join(goc_du_an, "CameraService", "main.py")
+path_camera = os.path.join(goc_du_an, "UI", "main_app.py")
 print("📸 3. Đang mở Giao diện Camera chính...")
 print("-" * 60)
 

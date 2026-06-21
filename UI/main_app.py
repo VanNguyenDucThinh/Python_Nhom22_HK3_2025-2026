@@ -72,14 +72,7 @@ class MainApp(ctk.CTk):
 
         self.separator = ctk.CTkFrame(self, height=1, fg_color="#dee2e6")
         self.separator.grid(row=1, column=0, sticky="ew")
-
-        self.btn_history = ctk.CTkButton(
-            self.header_frame, 
-            text=" Lịch sử", 
-            command=lambda: self.switch_view("data_frame") # Gọi hàm chuyển màn hình
-        )
-        self.btn_history.pack(side="right", padx=10)
-
+        
     def clear_main_frame(self):
         for widget in self.main_frame.winfo_children():
             widget.destroy()

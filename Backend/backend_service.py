@@ -139,6 +139,29 @@ def delete_record(record_id):
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/update-record/<int:record_id>', methods=['PUT'])
+def update_record(record_id):
+
+    record = WasteHistory.query.get(record_id)
+
+    if not record:
+        return jsonify({
+            "status": "error",
+            "message": "Không tìm thấy bản ghi"
+        }), 404
+
+    data = request.json
+
+    record.label = data.get("label", record.label)
+    record.confidence = data.get("confidence", record.confidence)
+
+    db.session.commit()
+
+    return jsonify({
+        "status": "success",
+        "message": "Cập nhật thành công"
+    })
+
 if __name__ == '__main__':
     print("Khởi động Backend Service tại http://127.0.0.1:5000")
     app.run(host='0.0.0.0', port=5000, debug=True)

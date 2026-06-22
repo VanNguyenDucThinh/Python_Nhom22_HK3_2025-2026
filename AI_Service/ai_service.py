@@ -16,7 +16,7 @@ MODEL_PATH = os.path.join(CURRENT_DIR, "best.pt")
 MOCK_PATH = os.path.join(CURRENT_DIR, "runs", "detect", "train", "weights", "best.pt")
 
 print("=" * 60)
-print("[HỆ THỐNG AI] Đang khởi tạo mô hình nhận diện OBJECT DETECTION...")
+print("[HỆ THỐNG AI - TH2] Đang khởi tạo mô hình nhận diện BÓC TÁCH ĐỘC LẬP...")
 
 ACTIVE_MODEL_PATH = MODEL_PATH if os.path.exists(MODEL_PATH) else MOCK_PATH if os.path.exists(MOCK_PATH) else None
 
@@ -35,7 +35,6 @@ print("=" * 60)
 
 @app.route('/predict', methods=['POST'])
 def process_image():
-    """API nhận ảnh từ Giao diện, đưa cho YOLO Detect, tự vẽ box màu theo loại rác và ném sang Backend"""
     if 'image' not in request.files:
         return jsonify({"status": "error", "message": "Không tìm thấy dữ liệu túi file mang tên 'image' trong Request!"}), 400
     
@@ -45,22 +44,21 @@ def process_image():
         frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
         if frame is None:
-            return jsonify({"status": "error", "message": "Dữ liệu ảnh truyền sang bị hỏng, không thể giải mã!"}), 400
+            return jsonify({"status": "error", "message": "Dữ liệu ảnh truyền sang bị hỏng!"}), 400
 
-        # 1. Đưa ảnh vào mô hình dự đoán
+        # 1. Quét ảnh MỘT LẦN DUY NHẤT để tránh nhận diện lặp
         results = model(frame) 
         result = results[0]
         
         detected_items = []
-        frame_to_save = frame.copy()
 
-        # 2. Dùng vòng lặp duyệt qua TẤT CẢ các vật thể AI tìm thấy
+        # 2. VÒNG LẶP: Xử lý TỪNG VẬT THỂ một thành các dòng dữ liệu riêng
         if hasattr(result, 'boxes') and result.boxes is not None:
             for i in range(len(result.boxes)):
                 class_index = int(result.boxes.cls[i])
                 confidence = float(result.boxes.conf[i])
                 coords = result.boxes.xyxy[i].tolist()
-                box_coords = [int(c) for c in coords] # [xmin, ymin, xmax, ymax]
+                box_coords = [int(c) for c in coords] 
                 
                 if class_index in model.names:
                     raw_label = model.names[class_index].lower()
@@ -69,79 +67,64 @@ def process_image():
 
                 box_color = (128, 128, 128) 
                 
-                # Phân loại nhãn tiếng Việt và gán màu sắc đồng bộ với Giao diện
                 if "inorganic" in raw_label or "vo_co" in raw_label:
                     label = "Rác vô cơ"
-                    box_color = (255, 0, 0)      # Xanh dương
+                    box_color = (255, 0, 0)      
                 elif "organic" in raw_label or "huu_co" in raw_label:
                     label = "Rác hữu cơ"
-                    box_color = (0, 255, 0)      # Xanh lá
+                    box_color = (0, 255, 0)      
                 elif "recycl" in raw_label or "tai_che" in raw_label:
                     label = "Rác tái chế"
-                    box_color = (0, 191, 255)    # Vàng/Cam sáng
+                    box_color = (0, 191, 255)    
                 elif "hazard" in raw_label or "doc_hai" in raw_label:
                     label = "Rác độc hại"
-                    box_color = (0, 0, 255)      # Đỏ
+                    box_color = (0, 0, 255)      
                 else:
                     label = "Không nhận diện được"
 
-                # Gom dữ liệu các vật thể hợp lệ
                 if label != "Không nhận diện được":
+                    # TẠO ẢNH RIÊNG CHO VẬT THỂ HIỆN TẠI
+                    # Copy từ frame gốc để ảnh không bị dính khung của các vật thể trước đó
+                    single_item_frame = frame.copy()
+                    
+                    # Vẽ đúng 1 khung bao cho vật thể này
+                    cv2.rectangle(single_item_frame, (box_coords[0], box_coords[1]), (box_coords[2], box_coords[3]), box_color, 3)
+
+                    # Đóng gói ảnh của vật thể này
+                    _, img_encoded = cv2.imencode('.jpg', single_item_frame)
+                    img_bytes = img_encoded.tobytes()
+
+                    # Gửi API độc lập xuống Backend (Tạo thành 1 dòng riêng trong Database)
+                    files = {'image': (f'detected_item_{i}.jpg', img_bytes, 'image/jpeg')}
+                    payload = {'label': label, 'confidence': f"{confidence * 100:.2f}%"}
+                    
+                    try:
+                        requests.post(BACKEND_URL, data=payload, files=files, timeout=4)
+                        print(f"[AI SERVICE] Đã tách & lưu dòng riêng: {label} ({confidence * 100:.2f}%)")
+                    except Exception as e:
+                        print(f"[CẢNH BÁO KẾT NỐI] Không gửi vật thể {i} sang Backend được: {e}")
+
+                    # Ghi nhận vào mảng chung
                     detected_items.append({
                         "label": label,
-                        "raw_conf": confidence, # Giữ số thực để so sánh lấy giá trị lớn nhất
+                        "confidence": f"{confidence * 100:.2f}%",
                         "box": box_coords
                     })
-                    # Vẽ TẤT CẢ các khung màu lên ảnh
-                    cv2.rectangle(frame_to_save, (box_coords[0], box_coords[1]), (box_coords[2], box_coords[3]), box_color, 3)
 
-        # 3. GOM NHÓM DỮ LIỆU CHUẨN KHOA HỌC (Khử trùng & Lấy Max Confidence)
+        # 3. Trả thông báo tóm tắt về cho Giao diện UI
         if len(detected_items) > 0:
-            best_detections = {}
+            # Gom các nhãn lại để UI hiển thị cho đẹp (VD: Rác tái chế, Rác vô cơ)
+            unique_labels = list(set([item["label"] for item in detected_items]))
+            ui_label = ", ".join(unique_labels)
             
-            # Lọc để giữ lại độ tin cậy CAO NHẤT cho mỗi loại rác
-            for item in detected_items:
-                lbl = item["label"]
-                conf = item["raw_conf"]
-                # Nếu nhãn chưa có, hoặc có rồi nhưng độ tin cậy của vật thể này cao hơn -> Cập nhật
-                if lbl not in best_detections or conf > best_detections[lbl]:
-                    best_detections[lbl] = conf
+            # Thông báo cho UI biết đã tách bao nhiêu dòng
+            ui_conf = f"Đã tách {len(detected_items)} dòng dữ liệu"
 
-            # Tạo chuỗi gộp gửi xuống Backend và hiển thị giao diện
-            all_labels = ", ".join(best_detections.keys())
-            all_confs = ", ".join([f"{conf * 100:.2f}%" for conf in best_detections.values()])
-            
-            print(f"[AI SERVICE] Nhận diện gộp: {all_labels} (Max Confidence: {all_confs})")
-
-            # Dọn dẹp lại format data trước khi trả về mảng chi tiết
-            for item in detected_items:
-                item["confidence"] = f"{item['raw_conf'] * 100:.2f}%"
-                del item["raw_conf"]
-            
-            # Chuyển đổi ảnh đã vẽ khung màu thành chuỗi bytes định dạng .jpg
-            _, img_encoded = cv2.imencode('.jpg', frame_to_save)
-            img_bytes = img_encoded.tobytes()
-
-            # Đóng gói Multipart gửi sang Backend
-            files = {
-                'image': ('detected_waste.jpg', img_bytes, 'image/jpeg')
-            }
-            payload = {
-                'label': all_labels,
-                'confidence': all_confs
-            }
-            
-            try:
-                requests.post(BACKEND_URL, data=payload, files=files, timeout=4)
-            except Exception as e:
-                print(f"[CẢNH BÁO KẾT NỐI] Không gửi ảnh và dữ liệu sang Backend lưu được: {e}")
-
-            # 4. Trả kết quả về cho Giao diện hiển thị trực tiếp
             return jsonify({
                 "status": "success", 
                 "items": detected_items, 
-                "label": all_labels,     # VD: "Rác tái chế, Rác độc hại"
-                "confidence": all_confs, # VD: "95.00%, 85.00%"
+                "label": ui_label,     
+                "confidence": ui_conf, 
                 "box": detected_items[0]["box"] 
             }), 200
         else:

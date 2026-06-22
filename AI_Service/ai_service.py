@@ -41,7 +41,6 @@ def process_image():
     
     try:
         file = request.files['image']
-        # Dùng np.frombuffer để đọc mảng byte ổn định hơn
         file_bytes = np.frombuffer(file.read(), np.uint8)
         frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
@@ -52,51 +51,72 @@ def process_image():
         results = model(frame) 
         result = results[0]
         
-        class_index = -1
-        confidence = 0.0
-        box_coords = []
+        detected_items = []
+        frame_to_save = frame.copy()
 
-        # 2. Bóc tách kết quả vật thể đầu tiên tìm thấy
-        if hasattr(result, 'boxes') and result.boxes is not None and len(result.boxes) > 0:
-            class_index = int(result.boxes.cls[0])
-            confidence = float(result.boxes.conf[0])
-            coords = result.boxes.xyxy[0].tolist()
-            box_coords = [int(c) for c in coords] # [xmin, ymin, xmax, ymax]
+        # 2. Dùng vòng lặp duyệt qua TẤT CẢ các vật thể AI tìm thấy
+        if hasattr(result, 'boxes') and result.boxes is not None:
+            for i in range(len(result.boxes)):
+                class_index = int(result.boxes.cls[i])
+                confidence = float(result.boxes.conf[i])
+                coords = result.boxes.xyxy[i].tolist()
+                box_coords = [int(c) for c in coords] # [xmin, ymin, xmax, ymax]
+                
+                if class_index in model.names:
+                    raw_label = model.names[class_index].lower()
+                else:
+                    raw_label = "unknown"
 
-        if class_index != -1 and class_index in model.names:
-            raw_label = model.names[class_index].lower()
-        else:
-            raw_label = "unknown"
+                box_color = (128, 128, 128) 
+                
+                # Phân loại nhãn tiếng Việt và gán màu sắc đồng bộ với Giao diện
+                if "inorganic" in raw_label or "vo_co" in raw_label:
+                    label = "Rác vô cơ"
+                    box_color = (255, 0, 0)      # Xanh dương
+                elif "organic" in raw_label or "huu_co" in raw_label:
+                    label = "Rác hữu cơ"
+                    box_color = (0, 255, 0)      # Xanh lá
+                elif "recycl" in raw_label or "tai_che" in raw_label:
+                    label = "Rác tái chế"
+                    box_color = (0, 191, 255)    # Vàng/Cam sáng
+                elif "hazard" in raw_label or "doc_hai" in raw_label:
+                    label = "Rác độc hại"
+                    box_color = (0, 0, 255)      # Đỏ
+                else:
+                    label = "Không nhận diện được"
 
-        # Định nghĩa ánh xạ màu sắc BGR (OpenCV sử dụng Blue - Green - Red)
-        # Mặc định là màu xám nếu không khớp loại
-        box_color = (128, 128, 128) 
+                # Gom dữ liệu các vật thể hợp lệ
+                if label != "Không nhận diện được":
+                    detected_items.append({
+                        "label": label,
+                        "raw_conf": confidence, # Giữ số thực để so sánh lấy giá trị lớn nhất
+                        "box": box_coords
+                    })
+                    # Vẽ TẤT CẢ các khung màu lên ảnh
+                    cv2.rectangle(frame_to_save, (box_coords[0], box_coords[1]), (box_coords[2], box_coords[3]), box_color, 3)
 
-        # Phân loại nhãn tiếng Việt và gán màu sắc đồng bộ với Giao diện
-        if "inorganic" in raw_label or "vo_co" in raw_label:
-            label = "Rác vô cơ"
-            box_color = (255, 0, 0)      # Xanh dương (B=255, G=0, R=0)
-        elif "organic" in raw_label or "huu_co" in raw_label:
-            label = "Rác hữu cơ"
-            box_color = (0, 255, 0)      # Xanh lá (B=0, G=255, R=0)
-        elif "recycl" in raw_label or "tai_che" in raw_label:
-            label = "Rác tái chế"
-            box_color = (0, 191, 255)    # Vàng/Cam sáng (B=0, G=191, R=255)
-        elif "hazard" in raw_label or "doc_hai" in raw_label:
-            label = "Rác độc hại"
-            box_color = (0, 0, 255)      # Đỏ (B=0, G=0, R=255)
-        else:
-            label = "Không nhận diện được"
+        # 3. GOM NHÓM DỮ LIỆU CHUẨN KHOA HỌC (Khử trùng & Lấy Max Confidence)
+        if len(detected_items) > 0:
+            best_detections = {}
+            
+            # Lọc để giữ lại độ tin cậy CAO NHẤT cho mỗi loại rác
+            for item in detected_items:
+                lbl = item["label"]
+                conf = item["raw_conf"]
+                # Nếu nhãn chưa có, hoặc có rồi nhưng độ tin cậy của vật thể này cao hơn -> Cập nhật
+                if lbl not in best_detections or conf > best_detections[lbl]:
+                    best_detections[lbl] = conf
 
-        conf_str = f"{confidence * 100:.2f}%"
-        print(f"[AI SERVICE] Nhãn gốc: '{raw_label}' | Nhãn dịch: '{label}' | Khung: {box_coords}")
+            # Tạo chuỗi gộp gửi xuống Backend và hiển thị giao diện
+            all_labels = ", ".join(best_detections.keys())
+            all_confs = ", ".join([f"{conf * 100:.2f}%" for conf in best_detections.values()])
+            
+            print(f"[AI SERVICE] Nhận diện gộp: {all_labels} (Max Confidence: {all_confs})")
 
-        # 3. Tiến hành gửi kết quả và ẢNH THỰC TẾ sang Backend lưu trữ (Nếu nhận diện thành công)
-        if label != "Không nhận diện được":
-            frame_to_save = frame.copy()
-            if len(box_coords) == 4:
-                # 🔥 ĐÃ SỬA: Chỉ vẽ bounding box với độ dày nét = 3, KHÔNG vẽ chữ lên ảnh
-                cv2.rectangle(frame_to_save, (box_coords[0], box_coords[1]), (box_coords[2], box_coords[3]), box_color, 3)
+            # Dọn dẹp lại format data trước khi trả về mảng chi tiết
+            for item in detected_items:
+                item["confidence"] = f"{item['raw_conf'] * 100:.2f}%"
+                del item["raw_conf"]
             
             # Chuyển đổi ảnh đã vẽ khung màu thành chuỗi bytes định dạng .jpg
             _, img_encoded = cv2.imencode('.jpg', frame_to_save)
@@ -107,8 +127,8 @@ def process_image():
                 'image': ('detected_waste.jpg', img_bytes, 'image/jpeg')
             }
             payload = {
-                'label': label,
-                'confidence': conf_str
+                'label': all_labels,
+                'confidence': all_confs
             }
             
             try:
@@ -116,13 +136,16 @@ def process_image():
             except Exception as e:
                 print(f"[CẢNH BÁO KẾT NỐI] Không gửi ảnh và dữ liệu sang Backend lưu được: {e}")
 
-        # 4. Trả kết quả về cho Giao diện hiển thị trực tiếp
-        return jsonify({
-            "status": "success", 
-            "label": label, 
-            "confidence": conf_str,
-            "box": box_coords
-        }), 200
+            # 4. Trả kết quả về cho Giao diện hiển thị trực tiếp
+            return jsonify({
+                "status": "success", 
+                "items": detected_items, 
+                "label": all_labels,     # VD: "Rác tái chế, Rác độc hại"
+                "confidence": all_confs, # VD: "95.00%, 85.00%"
+                "box": detected_items[0]["box"] 
+            }), 200
+        else:
+            return jsonify({"status": "success", "label": "Không nhận diện được"}), 200
 
     except Exception as e:
         print(f"[LỖI HỆ THỐNG CRASH]: {str(e)}")
